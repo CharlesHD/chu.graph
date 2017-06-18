@@ -1,0 +1,13 @@
+That's a graph library I use in pure clojure.
+
+
+There is not automatic documentation available for now but source code is documented.
+
+At the center there is the GraphProtocol which defines some set of operations you
+want to do on a Graph.
+
+Then there is three implementation of that protocol :
+- linked-graph : fast access to nodes and links
+- adjency-graph : fast access to adjency relation
+- func-graph : for graphs defined in term of a predicate over the link of a
+  complete graph.
