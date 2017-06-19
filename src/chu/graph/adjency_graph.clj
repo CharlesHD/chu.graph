@@ -13,43 +13,35 @@
   map-node, filter-node : O(E + V)
   add-node, add-link : O(1*)
   * : In fact it's something like log_32(n)"
-  (:require [clojure.core.async :as a]
-            [clojure.set :as set]
-            [chu.graph
+  (:require [chu.graph
              :refer
-             [->Link
-              add-link
+             [add-link
               add-node
               adjency
               default-graph-protocol-mixin
+              empty-graph
               GraphProtocol
               links
               nodes]]
-            [chulper.core :refer [map-keys map-vals]]))
+            [chulper.core :refer [map-keys map-vals]]
+            [clojure.core.async :as a]
+            [clojure.set :as set]
+            [chu.link :as l]
+            [chulper.core :as h]))
 
 ;; adjency, reversed, map-node, filter-node
 (defrecord AdjencyGraph [adj])
 
 (def EMPTY (->AdjencyGraph {}))
 
-(defn- adj-map-node
-  [g f]
-  (let [mf (memoize f)]
-    (as-> (adjency g) res
-      (map-keys mf res set/union)
-      (map-vals (partial reduce #(conj %1 (mf %2)) #{}) res)
-      (->AdjencyGraph res))))
-
 (defn- adj-filter-node
   [g pred]
   (let [mpred (memoize pred)
-        adj (adjency g)]
+        adj (adjency g)
+        keep #(select-keys % (filter pred (keys %)))]
     (->>
-     (adjency g)
-     (reduce-kv
-      (fn [m k v] (if (mpred k)
-                    (assoc m k (into #{} (filter mpred) v))
-                    m)) {})
+     (keep)
+     (h/map-vals keep)
      (->AdjencyGraph))))
 
 (defn- adj-filter-link
@@ -58,9 +50,9 @@
         total (count (links g))
         adj (adjency g)]
     (doseq [i (nodes g)]
-      (a/go (doseq [j (adj i)]
-              (if (pred (->Link i j))
-                (a/>! gmake (->Link i j))
+      (a/go (doseq [[j params] (adj i)]
+              (if (pred (l/make-link i j params))
+                (a/>! gmake (l/make-link i j params))
                 (a/>! gmake false)))))
     (loop [g (reduce add-node EMPTY (nodes g))
            treated 0]
@@ -73,9 +65,7 @@
 (def adjency-graph-mixin
   {:adjency (fn [g] (:adj g))
 
-   :empty-graph (fn [_] EMPTY)
-
-   :map-node adj-map-node
+   :empty-graph (constantly EMPTY)
 
    :filter-node adj-filter-node
 
@@ -84,15 +74,12 @@
    :add-node (fn [g n]
                (if (get-in g [:adj n])
                  g ;; node already exists, do nothing.
-                 (assoc-in g [:adj n] #{})))
+                 (assoc-in g [:adj n] {})))
 
-   :add-link (fn [g {fr :from to :to}]
+   :prot-add-link (fn [g {fr :from to :to :as l}]
                (-> (add-node g fr)
                    (add-node to)
-                   (update-in [:adj fr] conj to)))
-
-   :add-graph (fn [g g2]
-                (let [adj2 (adjency g2)]
-                  (update g :adj (partial merge-with set/union adj2))))})
+                   (update-in [:adj fr] assoc to (l/params l))))
+   })
 
 (extend AdjencyGraph GraphProtocol (merge default-graph-protocol-mixin adjency-graph-mixin))

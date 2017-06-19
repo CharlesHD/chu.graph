@@ -13,23 +13,29 @@
   map-node, filter-node : O(E + V)
   add-node, add-link : O(1*)
   * : In fact it's something like log_32(n)"
-  (:require [clojure.set :as set]
-            [chu.graph
+  (:require [chu.graph
              :refer
-             [->Link
-              add-node
-              default-graph-protocol-mixin
-              GraphProtocol
-              flip-link
-              links
-              nodes]]))
+             [add-node default-graph-protocol-mixin GraphProtocol links nodes]]
+            [chu.link :as l]))
 
 (defn links->adjency
   "Return the map where graph nodes are keys and vals are sequence of nodes adjacent to the key node.
-  Exemple : a -> b; a -> c; b -> c => {a #{b c} b #{c} c #{}}"
+  Exemple : a -> b(p1); a -> c(p2); b -> c(p3) => {a {b p1, c p2} b {c p3} c {}}"
   [nodes links]
-  (reduce (fn [m {x :from y :to}] (update m x #(conj % y)))
-          (zipmap nodes (repeat #{})) links))
+  (reduce (fn [m {x :from y :to :as l}]
+            (update m x #(assoc % y (l/params l))))
+          (zipmap nodes (repeat {})) links))
+
+(defn- set-conj-link
+  [mg s l]
+  (if (contains? s l)
+    (conj (disj s l)
+          (l/make-link
+           (:from l)
+           (:to l)
+           (mg (l/params l)
+               (l/params (get s l)))))
+    (conj s l)))
 
 (defrecord LinkedGraph [nds lks])
 
@@ -43,17 +49,9 @@
    :reversed (fn [g]
                (->LinkedGraph
                 (nodes g)
-                (set (map flip-link (links g)))))
+                (set (map l/flip-link (links g)))))
 
    :empty-graph (fn [_] EMPTY)
-
-   :map-node (fn [g f]
-               (->LinkedGraph
-                (set (map f (nodes g)))
-                (reduce (fn [lks {fr :from to :to}]
-                          (conj lks (->Link (f fr) (f to))))
-                          #{}           ;; use a set to ensure unicity if f is surjective.
-                          (links g))))
 
    :filter-node (fn [g pred]
                   (let [mpred (memoize pred)]
@@ -66,7 +64,7 @@
    :add-node (fn [g n]
                (update g :nds conj n))
 
-   :add-link (fn [g l]
-               (-> g (add-node (:from l)) (add-node (:to l)) (update :lks conj l)))})
+   :add-link (fn [mg g l]
+               (-> g (add-node (:from l)) (add-node (:to l)) (update :lks (partial set-conj-link mg) l)))})
 
 (extend LinkedGraph GraphProtocol (merge default-graph-protocol-mixin linked-graph-mixin))

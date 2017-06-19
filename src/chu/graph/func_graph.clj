@@ -1,24 +1,26 @@
 (ns chu.graph.func-graph
-  "Func Graph keep only the node list and a predicate over Links.
+  "Func Graph keep only the node list, a predicate over Links and a param function over links.
   Most of algorithmic costs are O(V^2)
-  but memory usage is only O(V + F) where F is the predicate memory usage."
+  but memory usage is only O(V + P + F) where P is the predicate memory usage and F the param function one."
   (:require [chu.graph :as g]
             [chulper.core :as h]
-            [clojure.set :as set]))
+            [clojure.set :as set]
+            [chu.link :as l]))
 
-(defrecord FuncGraph [nodes p])
+(defrecord FuncGraph [nodes p f])
 
-(def EMPTY (->FuncGraph (hash-set) (constantly false)))
+(def EMPTY (->FuncGraph (hash-set) (constantly false) (constantly {})))
 
 (defn- xf
-  [{p :p}]
-  (filter p))
+  [{p :p f :f}]
+  (filter p)
+  (map #(l/assoc-params % (f %))))
 
 (defn- lks
   [{nds :nodes}]
   (for [x nds
         y nds]
-    (g/->Link x y)))
+    (l/make-link x y {})))
 
 (defn- nodes
   [{nds :nodes}] nds)
@@ -28,52 +30,64 @@
   (sequence (xf g) (lks g)))
 
 (defn- adjency
-  [{nds :nodes p :p}]
-  (fn [x] (for [y nds
-                :let [l (g/->Link x y)]
-                :when (p l)]
-            y)))
+  [{nds :nodes p :p f :f}]
+  (fn [x]
+    (reduce #(let [l (l/make-link x %2)]
+               (if (p l)
+                 (assoc %1 %2 (f l))
+                 %1))
+            {} nds)))
 
 (defn- reversed
-  [{nds :nodes p :p}]
-  (->FuncGraph nds (h/key-fn g/flip-link p)))
+  [{nds :nodes p :p f :f}]
+  (->FuncGraph nds (comp p l/flip-link) (comp f l/flip-link)))
 
 (defn- map-node
-  [{nds :nodes p :p} f]
-  (let [f-inverse (zipmap (map f nds) nds)]
-    (->FuncGraph (vals f-inverse) (h/key-fn (partial h/map-vals f-inverse) p))))
+  [mg {nds :nodes p :p fa :f} f]
+  (let [f-inverse (zipmap nds (map f nds))]
+    (->FuncGraph (vals f-inverse)
+                 (comp p (partial h/map-vals f-inverse))
+                 (comp fa (partial h/map-vals f-inverse)))))
 
 (defn- filter-link
-  [{nds :nodes p :p} pred]
-  (->FuncGraph nds (every-pred p pred)))
+  [{nds :nodes p :p f :f} pred]
+  (->FuncGraph nds (every-pred p pred) f))
 
 (defn- filter-node
-  [{nds :nodes p :p} pred]
-  (->FuncGraph (filter pred nds) p))
+  [{nds :nodes p :p f :f} pred]
+  (->FuncGraph (filter pred nds) p f))
 
 (defn- empty-graph
   [g]
   EMPTY)
 
 (defn- add-node
-  [{nds :nodes p :p} n]
-  (->FuncGraph (conj (set nds) n) p))
+  [{nds :nodes p :p f :f} n]
+  (->FuncGraph (conj (set nds) n) p f))
 
 (defn- add-link
-  [{nds :nodes p :p} l]
-  (->FuncGraph nds (some-fn p #{l})))
+  [mg {nds :nodes p :p f :f} l]
+  (->FuncGraph nds
+               (some-fn p #{l})
+               (fn [l2] (if (= l l2) (mg (f l2) l) (f l2)))))
 
 (defn- add-graph
-  [{nds :nodes p :p :as g} g2]
+  [mg {nds :nodes p :p :as g} g2]
   (if (instance? FuncGraph g2)
-    (->FuncGraph (set/union nds (nodes g2)) (some-fn p (:p g2)))
-    (g/default-add-graph g g2)))
+    (->FuncGraph (set/union nds (nodes g2))
+                 (some-fn p (:p g2))
+                 (fn [l] (mg ((:f g) l)
+                             ((:f g2) l))))
+    (g/default-add-graph mg g g2)))
 
 (defn- intersection-graph
-  [{nds :nodes p :p :as g} g2]
+  [mg {nds :nodes p :p :as g} g2]
   (if (instance? FuncGraph g2)
-    (->FuncGraph (set/intersection nds (nodes g2)) (every-pred p (:p g2)))
-    (g/default-intersection-graph g g2)))
+    (->FuncGraph (set/intersection nds (nodes g2))
+                 (every-pred p (:p g2))
+                 (fn [l] (mg ((:f g) l)
+                             ((:f g2) l))))
+    (g/default-intersection-graph mg g g2)))
 
 (def funcgraph-mixin
   {:nodes nodes
@@ -84,10 +98,10 @@
    :filter-link filter-link
    :reversed reversed
    :empty-graph empty-graph
-   :add-link add-link
+   :prot-add-link add-link
    :add-node add-node
-   :add-graph add-graph
-   :intersection-graph intersection-graph
+   :prot-add-graph add-graph
+   :prot-intersection-graph intersection-graph
    })
 
 (extend FuncGraph g/GraphProtocol (merge g/default-graph-protocol-mixin funcgraph-mixin))
