@@ -2,21 +2,10 @@
   "Graph Protocol and API.
   Graph is a classic interface for complex linked data.
   It's composed of nodes (data) and links (relation between data)."
-  (:require [clojure.data.priority-map :refer [priority-map]]
-            [clojure.set :as set]
-            [chulper.core :refer [fixpoint map-vals]]))
-
-(defrecord Link [from to])
-
-(defn lift
-  "takes a function `f` of two args and make a function that take a link and call `(f from to)` "
-  [f]
-  (fn [{fr :from to :to}] (f fr to)))
-
-(defn unlift
-  "takes a function operating on link and return a two args function (f from to)"
-  [f]
-  (fn [from to] (f {:from from :to to})))
+  (:require [chu.link :refer [make-link flip-link]]
+            [chulper.core :refer [fixpoint map-vals]]
+            [clojure.data.priority-map :refer [priority-map]]
+            [clojure.set :as set]))
 
 (defprotocol GraphProtocol
   "That's a graph.
@@ -26,20 +15,24 @@
   (links [g]
     "List of links of the graph. A well formed graph has links wrapped in the Link record")
   (adjency [g]
-    "The map where graph nodes are keys and vals are sequence of nodes adjacent to the key node.
-     Exemple : a -> b; a -> c; b -> c => {a #{b c} b #{c} c #{}}")
+    "The map where graph nodes are keys and vals are maps of nodes adjacent to the key node with links params as value.
+     Exemple : a -> b(p1) ; a -> c(p2) ; b -> c(p3) => {a {b p1, c p2} b {c p3} c {}}")
   (ancestry [g]
-    "The map where graph nodes are keys and vals are sequence of nodes adjacent to the key node.
-     Exemple : a -> b; a -> c; b -> c => {a #{} b #{a} c #{a b}}")
+    "The map where graph nodes are keys and vals are of ancestors of the key node with link param as value.
+     Exemple : a -> b(p1); a -> c(p2); b -> c(p3) => {a #{} b {a p1} c {a p2, b p3}}")
   (reversed [g]
     "The same graph but with every links reversed : a -> b => b -> a")
-  (map-node [g f]
-    "Transform nodes of the graph using f : a -> b => (f a) -> (f b).
+  (prot-map-node [merge-params g f]
+    "Transform nodes of the graph using `f` : a -> b => (f a) -> (f b).
+     `merge-params` is used in case of transformation collision.
      Case where (f n1) = (f n2) = c is correctly handle :
-     - n1 -> a ; n2 -> b => c -> a ; c -> b
-     - a -> n1 ; b -> n2 => a -> c ; b -> c
-     - a -> n1 ; a -> n2 => a -> c
-     - n1 -> a ; n2 -> a => c -> a")
+     - n1 -> a(p1) ; n2 -> b(p2) => c -> a(p1) ; c -> b(p2)
+     - a -> n1(p1) ; b -> n2(p2) => a -> c(p1) ; b -> c(p2)
+     - a -> n1(p1) ; a -> n2(p2) => a -> c(merge-params p1 p2)
+     - n1 -> a(p1) ; n2 -> a(p2) => c -> a(merge-params p1 p2)")
+  (map-link [g f]
+    "Transform links params of the graph using `f` : a -> b(p) => a ->b(f a b p).
+     `f` should take a link as parameter and return the new links param map.")
   (filter-node [g pred]
     "Make a graph where you keep only nodes verifying pred.")
   (filter-link [g pred]
@@ -54,12 +47,44 @@
     "The same graph but with no nodes, no links.")
   (add-node [g n]
     "Same graph with node n added.")
-  (add-link [g l]
-    "Same graph with link l added. Add nodes involved in the link if not present.")
-  (add-graph [g g2]
-    "Add the graph g2 to the graph g. It's the union of nodes and links of both graph.")
-  (intersection-graph [g1 g2]
-    "The graph containing only nodes and links presents in both graphs"))
+  (prot-add-link [merge-params g l]
+    "Same graph with link l added. Add nodes involved in the link if not present.
+     If the link is already present `merge-params` resolve params conflict.")
+  (prot-add-graph [merge-params g g2]
+    "Add the graph g2 to the graph g. It's the union of nodes and links of both graph.
+     In case links are present in both graphs `merge-params` resolve params conflict.")
+  (prot-intersection-graph [merge-params g1 g2]
+    "The graph containing only nodes and links presents in both graphs.
+     `merge-params` resolve params conflict."))
+
+;; API Wrappers
+(defn map-node
+  "Wrapper to `prot-map-node`. If `merge-params` isn't specified use `merge` by default."
+  ([merge-params g f]
+   (prot-map-node merge-params g f))
+  ([g f]
+   (prot-map-node merge g f)))
+
+(defn add-link
+  "Wrapper to `prot-add-link`. If `merge-params` isn't specified use `merge` by default."
+  ([merge-params g l]
+   (prot-add-link merge-params g l))
+  ([g l]
+   (prot-add-link merge g l)))
+
+(defn add-graph
+  "Wrapper to `prot-add-graph`. If `merge-params` isn't specified use `merge` by default."
+  ([merge-params g l]
+   (prot-add-graph merge-params g l))
+  ([g l]
+   (prot-add-graph merge g l)))
+
+(defn intersection-graph
+  "Wrapper to `prot-intersection-graph`. If `merge-params` isn't specified use `merge` by default."
+  ([merge-params g l]
+   (prot-intersection-graph merge-params g l))
+  ([g l]
+   (prot-intersection-graph merge g l)))
 
 (defn reduce-graph
   "Reduce through a graph.
@@ -72,30 +97,26 @@
   "Given the adjency of a graph, get you the links of the graph"
   [adjency]
   (for [[x adj] adjency
-        y adj]
-    (->Link x y)))
+        [y p] adj]
+    (make-link x y p)))
 
-(defn flip-link
-  "Gimme a link, here it is flipped."
-  [{from :from to :to}]
-  (->Link to from))
 
 (defn default-add-graph
   "Add the graph g2 to the graph g. It's the union of nodes and links of both graph."
-  ([g g2]
-   (default-add-graph g (nodes g2) (links g2)))
-  ([g ns lks]
-   (reduce add-link
-           (reduce add-node g ns)
-           lks)))
+  [merge-params g g2]
+    (reduce (partial add-link merge-params)
+            (reduce add-node g (nodes g2))
+            (links g2)))
 
 (defn default-intersection-graph
   "The graph containing only nodes and links presents in both graphs"
-  [g1 g2]
+  [merge-params g1 g2]
   (let [e (empty-graph g1)
         nds (set/intersection (set (nodes g1)) (set (nodes g2)))
         lks (set/intersection (set (links g1)) (set (links g2)))]
-    (reduce add-link (reduce add-node e nds) lks)))
+    (reduce (partial add-link merge-params)
+            (reduce add-node e nds)
+            lks)))
 
 ;; Default Implementation of the Graph Protocol.
 ;; No default implementation for :
@@ -103,12 +124,16 @@
 (def default-graph-protocol-mixin
   {:nodes (fn [g] ((comp set keys adjency) g))
    :links (fn [g] ((comp adjency->links adjency) g))
-   :reversed (fn [g] (reduce add-link (reduce add-node (empty-graph g) (nodes g)) (map flip-link (links g))))
+   :reversed (fn [g] (reduce add-link
+                             (reduce add-node
+                                     (empty-graph g)
+                                     (nodes g))
+                             (map flip-link (links g))))
    :ancestry (fn [g] ((comp adjency reversed) g))
    :in-degrees (fn [g] (map-vals count (adjency g)))
    :out-degrees (fn [g] (map-vals count (ancestry g)))
    :degrees (fn [g] (merge-with + (in-degrees g) (out-degrees g)))
-   :add-graph #(default-add-graph %1 %2)
+   :prot-add-graph default-add-graph
    :intersection-graph default-intersection-graph})
 
 ;; API
@@ -126,7 +151,7 @@
 (defn undirect
   "Add missing return link to `g` : If a->b is a link then b->a will be too."
   [g]
-  (add-graph g (reversed g)))
+  (add-graph g (reversed g) merge))
 
 (defn make-graph
   "Construct a new graph like g but with ns as nodes and lks as links."
@@ -143,7 +168,7 @@
         line-lks (for [{f1 :from t1 :to :as l1} line-nodes
                        {f2 :from t2 :to :as l2} line-nodes
                        :when (and (not= l1 l2) (= t1 f2))]
-                   (->Link l1 l2))]
+                   (make-link l1 l2))]
     (make-graph g line-nodes line-lks)))
 
 (defn seed-graph
@@ -331,7 +356,7 @@
     (make-graph g1 nodes (for [[x y] nodes
                                x' (a1 x)
                                y' (a2 y)]
-                           (->Link [x y] [x' y'])))))
+                           (make-link [x y] [x' y'])))))
 
 (defn iterate-kronecker [g n]
   (reduce kronecker (repeat n g)))
@@ -342,4 +367,7 @@
   (cond
     (empty? coll) g
     (= 1 (count coll)) (add-node g (first coll))
-    :else (recur (add-link g (->Link (first coll) (second coll))) (rest coll))))
+    :else (recur (add-link g
+                           (make-link (first coll) (second coll))
+                           merge)
+                 (rest coll))))
