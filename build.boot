@@ -18,3 +18,9 @@
  jar {:manifest {"Foo" "bar"}})
 
 (bootlaces! +version+)
+
+(deftask testing
+  "Profile setup for running tests."
+[]
+  (set-env! :source-paths #(conj % "test"))
+  identity)
