@@ -2,7 +2,7 @@
   "Graph Protocol and API.
   Graph is a classic interface for complex linked data.
   It's composed of nodes (data) and links (relation between data)."
-  (:require [chu.link :refer [make-link flip-link]]
+  (:require [chu.link :as l :refer [flip-link make-link]]
             [chulper.core :refer [fixpoint map-vals]]
             [clojure.data.priority-map :refer [priority-map]]
             [clojure.set :as set]))
@@ -22,17 +22,17 @@
      Exemple : a -> b(p1); a -> c(p2); b -> c(p3) => {a #{} b {a p1} c {a p2, b p3}}")
   (reversed [g]
     "The same graph but with every links reversed : a -> b => b -> a")
-  (prot-map-node [merge-params g f]
-    "Transform nodes of the graph using `f` : a -> b => (f a) -> (f b).
-     `merge-params` is used in case of transformation collision.
-     Case where (f n1) = (f n2) = c is correctly handle :
-     - n1 -> a(p1) ; n2 -> b(p2) => c -> a(p1) ; c -> b(p2)
-     - a -> n1(p1) ; b -> n2(p2) => a -> c(p1) ; b -> c(p2)
-     - a -> n1(p1) ; a -> n2(p2) => a -> c(merge-params p1 p2)
-     - n1 -> a(p1) ; n2 -> a(p2) => c -> a(merge-params p1 p2)")
   (map-link [g f]
     "Transform links params of the graph using `f` : a -> b(p) => a ->b(f a b p).
      `f` should take a link as parameter and return the new links param map.")
+  (map-node [merge-params f g]
+    "Transform nodes of the graph using `f` : a -> b => (f a) -> (f b).
+    `merge-params` is used in case of transformation collision.
+    Case where (f n1) = (f n2) = c is correctly handle :
+    - n1 -> a(p1) ; n2 -> b(p2) => c -> a(p1) ; c -> b(p2)
+    - a -> n1(p1) ; b -> n2(p2) => a -> c(p1) ; b -> c(p2)
+    - a -> n1(p1) ; a -> n2(p2) => a -> c(merge-params p1 p2)
+    - n1 -> a(p1) ; n2 -> a(p2) => c -> a(merge-params p1 p2)")
   (filter-node [g pred]
     "Make a graph where you keep only nodes verifying pred.")
   (filter-link [g pred]
@@ -58,13 +58,6 @@
      `merge-params` resolve params conflict."))
 
 ;; API Wrappers
-(defn map-node
-  "Wrapper to `prot-map-node`. If `merge-params` isn't specified use `merge` by default."
-  ([merge-params g f]
-   (prot-map-node merge-params g f))
-  ([g f]
-   (prot-map-node merge g f)))
-
 (defn add-link
   "Wrapper to `prot-add-link`. If `merge-params` isn't specified use `merge` by default."
   ([merge-params g l]
@@ -100,23 +93,35 @@
         [y p] adj]
     (make-link x y p)))
 
-
 (defn default-add-graph
   "Add the graph g2 to the graph g. It's the union of nodes and links of both graph."
   [merge-params g g2]
-    (reduce (partial add-link merge-params)
-            (reduce add-node g (nodes g2))
-            (links g2)))
+  (reduce-graph
+   add-node
+   (partial add-link merge-params)
+   g g2))
 
 (defn default-intersection-graph
   "The graph containing only nodes and links presents in both graphs"
   [merge-params g1 g2]
   (let [e (empty-graph g1)
+        l1 (links g1) l2 (links g2)
         nds (set/intersection (set (nodes g1)) (set (nodes g2)))
-        lks (set/intersection (set (links g1)) (set (links g2)))]
+        lks (set/intersection (set l1) (set l2))]
     (reduce (partial add-link merge-params)
             (reduce add-node e nds)
-            lks)))
+            ;; you have to process twice the links in order to merge params
+            (concat (filter lks l1) (filter lks l2)))))
+
+(defn default-map-node
+  [merge-params f g]
+  (let [mf (memoize f)]
+    (reduce-graph
+     #(add-node %1 (mf %2))
+     #(add-link merge-params %1 (make-link (mf (:from %2))
+                                           (mf (:to %2))
+                                           (l/params %2)))
+     (empty-graph g) g)))
 
 ;; Default Implementation of the Graph Protocol.
 ;; No default implementation for :
@@ -133,10 +138,25 @@
    :in-degrees (fn [g] (map-vals count (adjency g)))
    :out-degrees (fn [g] (map-vals count (ancestry g)))
    :degrees (fn [g] (merge-with + (in-degrees g) (out-degrees g)))
+   :map-node default-map-node
    :prot-add-graph default-add-graph
-   :intersection-graph default-intersection-graph})
+   :prot-intersection-graph default-intersection-graph})
 
 ;; API
+(defn make-graph
+  "Construct a new graph like g but with ns as nodes and lks as links."
+  ([g mg ns lks]
+   (reduce (partial add-link mg)
+           (reduce add-node (empty-graph g) ns)
+           lks))
+  ([g ns lks]
+   (make-graph g merge ns lks)))
+
+(defn map-links
+  "Change links params of `g` using `f`. See chu.link/update-params for more info.
+  f as the signature (f link old-link-params) and returns new link params"
+  [g f]
+  (make-graph g merge (nodes g) (map #(l/update-params % f) (links g))))
 
 (defn remove-node
   "Make a graph without the nodes verifying pred."
@@ -152,11 +172,6 @@
   "Add missing return link to `g` : If a->b is a link then b->a will be too."
   [g]
   (add-graph g (reversed g) merge))
-
-(defn make-graph
-  "Construct a new graph like g but with ns as nodes and lks as links."
-  [g ns lks]
-  (default-add-graph (empty-graph g) ns lks))
 
 (defn line-graph
   "Line-graph of g. Every link of g is a node in the line-graph. Two line-graph nodes are linked
@@ -188,15 +203,6 @@
   [g]
   (let [deg (degrees g)]
     (remove-node g #(zero? (deg %)))))
-
-;; (defn chain->graph
-;;   [chain]
-;;   (let [lks (reduce
-;;              (fn [m d] (-> m
-;;                            (update :links conj {:from (:last m) :to d})
-;;                            (assoc :last d)))
-;;              {:links [] :last (first chain)} (rest chain))]
-;;     (make-graph chain (:links lks))))
 
 (defn dfs
   "Depth first search. Short form of the method passes through all the
