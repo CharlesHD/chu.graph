@@ -9,8 +9,9 @@
     #(s/valid? (s/keys :req [::params]) (meta %))
     (fn [] (gen/bind (gen/map (gen/any) (gen/any))
                      (fn [v] (gen/fmap #(vary-meta % assoc ::params v) (gen/map (gen/any) (gen/any)))) ))))
-(s/def ::from (s/and any? (complement nil?)))
-(s/def ::to ::from)
+(s/def ::node (s/and any? (complement nil?)))
+(s/def ::from ::node)
+(s/def ::to ::node)
 (s/def ::proto-link (s/keys :req-un [::from ::to]))
 (s/def ::link
   (s/with-gen
@@ -112,3 +113,8 @@
   "Gimme a link, here it is flipped."
   [{from :from to :to :as l}]
   (make-link to from (params l)))
+
+(defn flat-link
+  "flatten a link and it's metadata"
+  [l]
+  (assoc l :p (params l)))

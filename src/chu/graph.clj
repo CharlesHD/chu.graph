@@ -7,42 +7,104 @@
             [chulper.core :refer [fixpoint map-vals]]
             [clojure.data.priority-map :refer [priority-map]]
             [clojure.set :as set]
-            [clojure.spec.alpha :as s]))
+            [clojure.spec.alpha :as s]
+            [chulper.core :as h]))
+
+;; specs
+(s/def ::node :chu.link/node)
+(s/def ::nodes (s/and (s/coll-of ::node :distinct true) set?))
+(s/def ::adj (s/fspec :args (s/cat :n ::node)
+                      :ret (s/map-of ::node :chu.link/params)))
+(s/def ::links (s/and (s/coll-of :chu.link/link :distinct true) set?))
+(s/def ::graph #(satisfies? prot/GraphProtocol %))
+(s/def ::merge-params (s/fspec :args (s/+ :chu.link/params)
+                               :ret :chu.link/params))
 
 ;; API Wrappers
+(s/fdef nodes
+        :args (s/cat :g ::graph)
+        :ret ::nodes)
 (defn nodes
   "Set of node of the graph"
   [g]
   (prot/nodes g))
 
+(s/fdef links
+        :args (s/cat :g ::graph)
+        :ret ::links)
 (defn links
   "List of links of the graph. A well formed graph has links wrapped in the Link record"
   [g]
   (prot/links g))
 
+(s/fdef adjency
+        :args (s/cat :g ::graph)
+        :ret ::adj)
 (defn adjency
   "The map where graph nodes are keys and vals are maps of nodes adjacent to the key node with links params as value.
    Exemple : a -> b(p1) ; a -> c(p2) ; b -> c(p3) => {a {b p1, c p2} b {c p3} c {}}"
   [g]
   (prot/adjency g))
 
+(s/fdef ancestry
+        :args (s/cat :g ::graph)
+        :ret ::adj)
 (defn ancestry
   "The map where graph nodes are keys and vals are of ancestors of the key node with link param as value.
    Exemple : a -> b(p1); a -> c(p2); b -> c(p3) => {a #{} b {a p1} c {a p2, b p3}}"
   [g]
   (prot/ancestry g))
 
+(s/fdef reversed
+        :args (s/cat :g ::graph)
+        :ret ::graph
+        :fn #(= (->> % :args :g links (map l/flip-link))
+                (->> % :ret links)))
 (defn reversed
   "The same graph but with every links reversed : a -> b => b -> a"
   [g]
   (prot/reversed g))
 
+(s/fdef map-link
+        :args (s/cat :f (s/fspec :args (s/cat :l :chu.link/link)
+                                 :ret :chu.link/params)
+                     :g ::graph)
+        :ret ::graph
+        :fn (s/and #((h/key-fn nodes =) (:ret %) (:g (:args %)))
+                   #((h/key-fn links =) (:ret %) (:g (:args %)))
+                   #(= (->> % :ret links
+                            (map (fn [l] {:l l :p (l/params l)})) set)
+                       (->> % :args :g links
+                            (map (fn [l] {:l l :p ((-> % :ret :f) l)})) set))))
 (defn map-link
-  "Transform links params of the graph using `f` : a -> b(p) => a ->b(f a b p).
+  "Transform links params of the graph using `f` : a -> b(p) => a ->b(f a->b(p)).
    `f` should take a link as parameter and return the new links param map."
   [f g]
   (prot/map-link g f))
 
+(s/fdef map-node
+        :args (s/or :complete
+                    (s/cat :merge-params ::merge-params
+                           :f (s/fspec :args (s/cat :n ::node)
+                                       :ret ::node)
+                           :g ::graph)
+                    :quick
+                    (s/cat :f (s/fspec :args (s/cat :n ::node)
+                                       :ret ::node)
+                           :g ::graph))
+        :ret ::graph
+        :fn (s/and
+             ;; nodes are the same modulo mapping
+             #(= (->> % :ret nodes)
+                 (->> % :args :g nodes (map (-> % :args :f)) set))
+             ;; links are still here modulo mapping
+             #(let [ret-nds (->> % :ret nodes)
+                    f-args (->> % :args :f)]
+                (every?
+                 (fn [{fr :from to :to}]
+                   (contains? ret-nds (l/make-link (f-args fr)
+                                                   (f-args to))))
+                 (-> % :args :g links)))))
 (defn map-node
   "Transform nodes of the graph using `f` : a -> b => (f a) -> (f b).
    `merge-params` is used in case of transformation collision.
@@ -54,41 +116,102 @@
   ([merge-params f g] (prot/map-node g merge-params f))
   ([f g] (map-node merge f g)))
 
+(s/fdef filter-node
+        :args (s/cat :pred (s/fspec :args (s/cat :x ::node))
+                     :g ::graph)
+        :ret ::graph
+        :fn (s/and
+             ;; equality of node set modulo filter
+             #(= (-> % :ret nodes)
+                 (->> % :args :g nodes (filter (-> % :args :pred)) set))
+             ;; equality of links
+             #(= (->> % :ret links (map l/flat-link) set)
+                 (->> % :args :g links (filter (fn [{fr :from to :to}]
+                                                 (let [pr (-> % :args :pred)]
+                                                   (and (pr fr) (pr to)))))
+                      (map l/flat-link) set))))
 (defn filter-node
   "Make a graph where you keep only nodes verifying pred."
   [pred g]
   (prot/filter-node pred g))
 
+(s/fdef filter-link
+        :args (s/cat :pred (s/fspec :args (s/cat :x :chu.link/link))
+                     :g ::graph)
+        :ret ::graph
+        :fn (s/and
+             ;; equality of node
+             #(= (-> % :ret nodes)
+                 (-> % :args :g nodes))
+             ;; equality of links modulo filter
+             #(= (->> % :ret links (map l/flat-link) set)
+                 (->> % :args :g links (filter (-> % :args :pred))
+                      (map l/flat-link) set))))
 (defn filter-link
   "Make a graph where you only keep links verifying pred."
   [pred g]
   (prot/filter-link g pred))
 
+(s/fdef in-degrees
+        :args (s/cat :g ::graph)
+        :ret (s/map-of ::node number?))
 (defn in-degrees
   "return a map where nodes are keys and val is the in-degree of the keynode."
   [g]
   (prot/in-degrees g))
 
+(s/fdef out-degrees
+        :args (s/cat :g ::graph)
+        :ret (s/map-of ::node number?))
 (defn out-degrees
   "return a map where nodes are keys and val is the out-degree of the keynode."
   [g]
   (prot/out-degrees g))
 
+(s/fdef degrees
+        :args (s/cat :g ::graph)
+        :ret (s/map-of ::node number?)
+        :fn #(= (:ret %) (merge-with +
+                                     (in-degrees (-> % :args :g))
+                                     (out-degrees (-> % :args :g)))))
 (defn degrees
   "return a map where nodes are keys and val is the total degree of the keynode."
   [g]
   (prot/degrees g))
 
+(s/fdef empty-graph
+        :args (s/cat :g ::graph)
+        :ret ::graph
+        :fn (s/and #(empty? (nodes (:ret %)))
+                   #(empty? (links (:ret %)))))
 (defn empty-graph
   "The same graph but with no nodes, no links."
   [g]
   (prot/empty-graph g))
 
+(s/fdef add-node
+        :args (s/cat :g ::graph :n ::node)
+        :ret ::graph
+        :fn #(= (-> % :ret nodes) (-> % :args :g nodes (conj (-> % :args :n)) set)))
 (defn add-node
   "Same graph with node n added."
   [g n]
   (prot/add-node g n))
 
+(s/fdef add-link
+        :args (s/or :complete (s/cat :merge-params ::merge-params :g ::graph :l :chu.link/link)
+                    :quick (s/cat :g ::graph :l :chu.link/link))
+        :ret ::graph
+        :fn #(if-let [args (-> % :args :complete)]
+               (and
+                (= (-> args :g links) (-> % :ret links (conj (:l args))))
+                (if (contains? (-> args :g links) (:l args))
+                  (let [l1 (get (-> args :g links) (:l args))
+                        l2 (:l args)
+                        l3 (get (-> % :ret links) (:l args))]
+                    (= (l/params l3) ((:merge-params args) l1 l2)))
+                  true))
+               true))
 (defn add-link
   "Same graph with link l added. Add nodes involved in the link if not present.
    If the link is already present `merge-params` resolve params conflict."
@@ -97,6 +220,20 @@
   ([g l]
    (prot/add-link g merge l)))
 
+(s/fdef add-graph
+        :args (s/or :complete (s/cat :merge-params ::merge-params :g ::graph :g2 ::graph)
+                    :quick (s/cat :g ::graph :g2 ::graph))
+        :ret ::graph
+        :fn #(if-let [args (-> % :args :complete)]
+               (let [g (:g args)
+                     g2 (:g2 args)
+                     ret (:ret %)]
+                 (and
+                  (= (nodes ret)
+                     (set/union (nodes g) (nodes g2)))
+                  (= (links ret)
+                     (set/union (links g) (links g2)))))
+               true))
 (defn add-graph
   "Add the graph g2 to the graph g. It's the union of nodes and links of both graph.
    In case links are present in both graphs `merge-params` resolve params conflict."
@@ -105,6 +242,20 @@
   ([g g2]
    (prot/add-graph g merge g2)))
 
+(s/fdef intersection-graph
+        :args (s/or :complete (s/cat :merge-params ::merge-params :g ::graph :g2 ::graph)
+                    :quick (s/cat :g ::graph :g2 ::graph))
+        :ret ::graph
+        :fn #(if-let [args (-> % :args :complete)]
+               (let [g (:g args)
+                     g2 (:g2 args)
+                     ret (:ret %)]
+                 (and
+                  (= (nodes ret)
+                     (set/intersection (nodes g) (nodes g2)))
+                  (= (links ret)
+                     (set/intersection (links g) (links g2)))))
+               true))
 (defn intersection-graph
   "The graph containing only nodes and links presents in both graphs.
    `merge-params` resolve params conflict."
@@ -114,6 +265,13 @@
    (prot/intersection-graph g merge g2)))
 
 ;; API
+(s/fdef reduce-graph
+        :args (s/cat :nf (s/fspec :args (s/cat :m any? :n ::node)
+                                  :ret any?)
+                     :lf (s/fspec :args (s/cat :m any? :l :chu.link/link))
+                     :init any?
+                     :g ::graph)
+        :ret any?)
 (defn reduce-graph
   "Reduce through a graph.
   First reduce through nodes using `nf`.
@@ -121,6 +279,20 @@
   [nf lf init g]
   (prot/reduce-graph nf lf init g))
 
+(s/fdef make-graph
+        :args (s/or :complete (s/cat :g ::graph
+                                     :mg ::merge-params
+                                     :ns (s/coll-of ::node)
+                                     :lks (s/coll-of :chu.link/link))
+                    :quick (s/cat :g ::graph
+                                  :ns (s/coll-of ::node)
+                                  :lks (s/coll-of :chu.link/link)))
+        :ret ::graph
+        :fn #(if-let [args (-> % :args :complete)]
+               (and (= (-> args :ns set) (-> % :ret nodes))
+                    (= (->> args :lks (map l/flat-link) set)
+                       (-> % :ret links (map l/flat-link) set)))
+               true))
 (defn make-graph
   "Construct a new graph like g but with ns as nodes and lks as links."
   ([g mg ns lks]
@@ -130,20 +302,14 @@
   ([g ns lks]
    (make-graph g merge ns lks)))
 
-(defn map-links
-  "Change links params of `g` using `f`. See chu.link/update-params for more info.
-  f as the signature (f link old-link-params) and returns new link params"
-  [g f]
-  (make-graph g merge (nodes g) (map #(l/update-params % f) (links g))))
-
 (defn remove-node
-  "Make a graph without the nodes verifying pred."
-  [g pred]
+  "Make a graph without nodes verifying pred."
+  [pred g]
   (filter-node g (complement pred)))
 
 (defn remove-link
-  "Make a graph without the links verifying pred."
-  [g pred]
+  "Make a graph without links verifying pred."
+  [pred g]
   (filter-link g (complement pred)))
 
 (defn undirect
