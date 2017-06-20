@@ -13,10 +13,9 @@
   map-node, filter-node : O(E + V)
   add-node, add-link : O(1*)
   * : In fact it's something like log_32(n)"
-  (:require [chu.graph
-             :refer
-             [add-node default-graph-protocol-mixin GraphProtocol links nodes]]
-            [chu.link :as l]))
+  (:require [chu.graph.protocol :refer [default-graph-protocol-mixin GraphProtocol]]
+            [chu.link :as l]
+            [chu.graph :as g]))
 
 (defn links->adjency
   "Return the map where graph nodes are keys and vals are sequence of nodes adjacent to the key node.
@@ -48,23 +47,23 @@
 
    :reversed (fn [g]
                (->LinkedGraph
-                (nodes g)
-                (set (map l/flip-link (links g)))))
+                (g/nodes g)
+                (set (map l/flip-link (g/links g)))))
 
    :empty-graph (fn [_] EMPTY)
 
    :filter-node (fn [g pred]
                   (let [mpred (memoize pred)]
                     (->LinkedGraph
-                     (set (filter mpred (nodes g)))
-                     (set (filter (fn [{fr :from to :to}] (and (mpred fr) (mpred to))) (links g))))))
+                     (set (filter mpred (g/nodes g)))
+                     (set (filter (fn [{fr :from to :to}] (and (mpred fr) (mpred to))) (g/links g))))))
 
-   :filter-link (fn [g pred] (->LinkedGraph (nodes g) (filter pred (links g))))
+   :filter-link (fn [g pred] (->LinkedGraph (g/nodes g) (filter pred (g/links g))))
 
    :add-node (fn [g n]
                (update g :nds conj n))
 
    :add-link (fn [mg g l]
-               (-> g (add-node (:from l)) (add-node (:to l)) (update :lks (partial set-conj-link mg) l)))})
+               (-> g (g/add-node (:from l)) (g/add-node (:to l)) (update :lks (partial set-conj-link mg) l)))})
 
 (extend LinkedGraph GraphProtocol (merge default-graph-protocol-mixin linked-graph-mixin))

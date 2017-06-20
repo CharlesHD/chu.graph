@@ -2,10 +2,15 @@
   "Func Graph keep only the node list, a predicate over Links and a param function over links.
   Most of algorithmic costs are O(V^2)
   but memory usage is only O(V + P + F) where P is the predicate memory usage and F the param function one."
-  (:require [chu.graph :as g]
+  (:require [chu.graph.protocol
+             :refer
+             [default-add-graph
+              default-graph-protocol-mixin
+              default-intersection-graph
+              GraphProtocol]]
+            [chu.link :as l]
             [chulper.core :as h]
-            [clojure.set :as set]
-            [chu.link :as l]))
+            [clojure.set :as set]))
 
 (defrecord FuncGraph [nodes p f])
 
@@ -78,7 +83,7 @@
                  (some-fn p (:p g2))
                  (fn [l] (mg ((:f g) l)
                              ((:f g2) l))))
-    (g/default-add-graph mg g g2)))
+    (default-add-graph mg g g2)))
 
 (defn- intersection-graph
   [mg {nds :nodes p :p :as g} g2]
@@ -87,7 +92,7 @@
                  (every-pred p (:p g2))
                  (fn [l] (mg ((:f g) l)
                              ((:f g2) l))))
-    (g/default-intersection-graph mg g g2)))
+    (default-intersection-graph mg g g2)))
 
 (def funcgraph-mixin
   {:nodes nodes
@@ -104,4 +109,4 @@
    :prot-intersection-graph intersection-graph
    })
 
-(extend FuncGraph g/GraphProtocol (merge g/default-graph-protocol-mixin funcgraph-mixin))
+(extend FuncGraph GraphProtocol (merge default-graph-protocol-mixin funcgraph-mixin))
