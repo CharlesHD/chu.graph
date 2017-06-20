@@ -66,10 +66,10 @@
                  g ;; node already exists, do nothing.
                  (assoc-in g [:adj n] {})))
 
-   :add-link (fn [g {fr :from to :to :as l}]
+   :add-link (fn [g mg {fr :from to :to :as l}]
                (-> (g/add-node g fr)
                    (g/add-node to)
-                   (update-in [:adj fr] assoc to (l/params l))))
+                   (update-in [:adj fr to] #(mg % (l/params l)))))
    })
 
 (extend AdjencyGraph GraphProtocol (merge default-graph-protocol-mixin adjency-graph-mixin))

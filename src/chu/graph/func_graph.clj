@@ -48,7 +48,7 @@
   (->FuncGraph nds (comp p l/flip-link) (comp f l/flip-link)))
 
 (defn- map-node
-  [mg {nds :nodes p :p fa :f} f]
+  [{nds :nodes p :p fa :f} mg f]
   (let [f-inverse (zipmap nds (map f nds))]
     (->FuncGraph (vals f-inverse)
                  (comp p (partial h/map-vals f-inverse))
@@ -71,22 +71,22 @@
   (->FuncGraph (conj (set nds) n) p f))
 
 (defn- add-link
-  [mg {nds :nodes p :p f :f} l]
+  [{nds :nodes p :p f :f} mg l]
   (->FuncGraph nds
                (some-fn p #{l})
                (fn [l2] (if (= l l2) (mg (f l2) l) (f l2)))))
 
 (defn- add-graph
-  [mg {nds :nodes p :p :as g} g2]
+  [{nds :nodes p :p :as g} mg g2]
   (if (instance? FuncGraph g2)
     (->FuncGraph (set/union nds (nodes g2))
                  (some-fn p (:p g2))
                  (fn [l] (mg ((:f g) l)
                              ((:f g2) l))))
-    (default-add-graph mg g g2)))
+    (default-add-graph g mg g2)))
 
 (defn- intersection-graph
-  [mg {nds :nodes p :p :as g} g2]
+  [{nds :nodes p :p :as g} mg g2]
   (if (instance? FuncGraph g2)
     (->FuncGraph (set/intersection nds (nodes g2))
                  (every-pred p (:p g2))

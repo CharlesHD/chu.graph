@@ -69,7 +69,7 @@
 
 (defn default-add-graph
   "Add the graph g2 to the graph g. It's the union of nodes and links of both graph."
-  [merge-params g g2]
+  [g merge-params g2]
   (reduce-graph
    add-node
    (partial add-link merge-params)
@@ -77,7 +77,7 @@
 
 (defn default-intersection-graph
   "The graph containing only nodes and links presents in both graphs"
-  [merge-params g1 g2]
+  [g1 merge-params g2]
   (let [e (empty-graph g1)
         l1 (links g1) l2 (links g2)
         nds (set/intersection (set (nodes g1)) (set (nodes g2)))
@@ -90,7 +90,7 @@
 
 
 (defn default-map-node
-  [merge-params f g]
+  [g merge-params f]
   (let [mf (memoize f)]
     (reduce-graph
      #(add-node %1 (mf %2))

@@ -63,7 +63,7 @@
    :add-node (fn [g n]
                (update g :nds conj n))
 
-   :add-link (fn [mg g l]
+   :add-link (fn [g mg l]
                (-> g (g/add-node (:from l)) (g/add-node (:to l)) (update :lks (partial set-conj-link mg) l)))})
 
 (extend LinkedGraph GraphProtocol (merge default-graph-protocol-mixin linked-graph-mixin))
