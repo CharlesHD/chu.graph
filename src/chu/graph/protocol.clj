@@ -87,8 +87,6 @@
             ;; you have to process twice the links in order to merge params
             (concat (filter lks l1) (filter lks l2)))))
 
-
-
 (defn default-map-node
   [g merge-params f]
   (let [mf (memoize f)]
@@ -98,6 +96,14 @@
                                            (mf (:to %2))
                                            (l/params %2)))
      (empty-graph g) g)))
+
+(defn default-map-link
+  "Change links params of `g` using `f`. See chu.link/update-params for more info.
+  f as the signature (f link old-link-params) and returns new link params"
+  [g f]
+  (reduce (partial add-link merge)
+          (reduce add-node (empty-graph g) (nodes g))
+          (map f (links g))))
 
 ;; Default Implementation of the Graph Protocol.
 ;; No default implementation for :
@@ -115,5 +121,6 @@
    :out-degrees (fn [g] (map-vals count (ancestry g)))
    :degrees (fn [g] (merge-with + (in-degrees g) (out-degrees g)))
    :map-node default-map-node
+   :map-link default-map-link
    :add-graph default-add-graph
    :intersection-graph default-intersection-graph})
