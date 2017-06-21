@@ -17,10 +17,27 @@
             [chu.graph.protocol :refer [default-graph-protocol-mixin GraphProtocol]]
             [chu.link :as l]
             [chulper.core :as h]
-            [clojure.core.async :as a]))
+            [clojure.core.async :as a]
+            [clojure.spec.alpha :as s]
+            [clojure.set :as set]
+            [clojure.spec.gen.alpha :as gen]))
 
 ;; adjency, reversed, map-node, filter-node
 (defrecord AdjencyGraph [adj])
+
+(s/def ::adjency-graph
+  (s/with-gen
+    (s/and (s/map-of :chu.link/node
+                     (s/map-of :chu.link/node :chu.link/params))
+           #(set/subset? (set (keys %)) (apply set/union (map (comp set keys) (vals %)))))
+    (fn []
+      (gen/bind (s/gen (s/coll-of :chu.link/node :kind set? :max-count 20 :distinct true))
+                (fn [nds]
+                  (if (empty? nds)
+                    (s/gen (s/and map? empty?))
+                    (gen/fmap
+                     #(zipmap nds %)
+                     (s/gen (s/coll-of (s/map-of nds :chu.link/params) :max-count 20)))))))))
 
 (def EMPTY (->AdjencyGraph {}))
 
@@ -39,7 +56,7 @@
   (let [gmake (a/chan (a/buffer (count (g/links g))))
         total (count (g/links g))
         adj (g/adjency g)]
-    (doseq [i (nodes g)]
+    (doseq [i (g/nodes g)]
       (a/go (doseq [[j params] (adj i)]
               (if (pred (l/make-link i j params))
                 (a/>! gmake (l/make-link i j params))
@@ -66,10 +83,12 @@
                  g ;; node already exists, do nothing.
                  (assoc-in g [:adj n] {})))
 
-   :add-link (fn [g mg {fr :from to :to :as l}]
+   :add-link (fn [g mg {fr :from to :to p :params}]
                (-> (g/add-node g fr)
                    (g/add-node to)
-                   (update-in [:adj fr to] #(mg % (l/params l)))))
+                   (#(if (get-in % [:adj fr to])
+                       (update-in % [:adj fr to] mg p)
+                       (assoc-in % [:adj fr to] p)))))
    })
 
 (extend AdjencyGraph GraphProtocol (merge default-graph-protocol-mixin adjency-graph-mixin))
