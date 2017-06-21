@@ -1,5 +1,5 @@
 (ns chu.graph.protocol
-  (:require [chu.link :as l :refer [flip-link make-link]]
+  (:require [chu.link :as l :refer [flip make-link]]
             [chulper.core :refer [map-vals]]
             [clojure.set :as set]))
 
@@ -60,6 +60,12 @@
   [nf lf init g]
   (reduce lf (reduce nf init (nodes g)) (links g)))
 
+(defn make-graph
+  [g mg ns lks]
+  (reduce #(add-link %1 mg %2)
+          (reduce add-node (empty-graph g) ns)
+          lks))
+
 (defn adjency->links
   "Given the adjency of a graph, get you the links of the graph"
   [adjency]
@@ -72,7 +78,7 @@
   [g merge-params g2]
   (reduce-graph
    add-node
-   (partial add-link merge-params)
+   #(add-link %1 merge-params %2)
    g g2))
 
 (defn default-intersection-graph
@@ -82,7 +88,7 @@
         l1 (links g1) l2 (links g2)
         nds (set/intersection (set (nodes g1)) (set (nodes g2)))
         lks (set/intersection (set l1) (set l2))]
-    (reduce (partial add-link merge-params)
+    (reduce #(add-link %1 merge-params %2)
             (reduce add-node e nds)
             ;; you have to process twice the links in order to merge params
             (concat (filter lks l1) (filter lks l2)))))
@@ -92,18 +98,23 @@
   (let [mf (memoize f)]
     (reduce-graph
      #(add-node %1 (mf %2))
-     #(add-link merge-params %1 (make-link (mf (:from %2))
-                                           (mf (:to %2))
-                                           (l/params %2)))
+     #(add-link %1 merge-params (l/make-link (mf (:from %2))
+                                             (mf (:to %2))
+                                             (:params %2)))
      (empty-graph g) g)))
 
 (defn default-map-link
   "Change links params of `g` using `f`. See chu.link/update-params for more info.
   f as the signature (f link old-link-params) and returns new link params"
   [g f]
-  (reduce (partial add-link merge)
+  (reduce #(add-link %1 merge %2)
           (reduce add-node (empty-graph g) (nodes g))
-          (map f (links g))))
+          (map (partial l/update-params f) (links g))))
+
+
+(defn default-filter-link
+  [g pred]
+  (make-graph g merge (nodes g) (set (filter pred (links g)))))
 
 ;; Default Implementation of the Graph Protocol.
 ;; No default implementation for :
@@ -115,12 +126,13 @@
                              (reduce add-node
                                      (empty-graph g)
                                      (nodes g))
-                             (map flip-link (links g))))
+                             (map l/flip (links g))))
    :ancestry (fn [g] ((comp adjency reversed) g))
    :in-degrees (fn [g] (map-vals count (adjency g)))
    :out-degrees (fn [g] (map-vals count (ancestry g)))
    :degrees (fn [g] (merge-with + (in-degrees g) (out-degrees g)))
    :map-node default-map-node
    :map-link default-map-link
+   :filter-link default-filter-link
    :add-graph default-add-graph
    :intersection-graph default-intersection-graph})

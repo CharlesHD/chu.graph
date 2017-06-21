@@ -15,30 +15,58 @@
   * : In fact it's something like log_32(n)"
   (:require [chu.graph.protocol :refer [default-graph-protocol-mixin GraphProtocol]]
             [chu.link :as l]
-            [chu.graph :as g]))
+            [chu.graph :as g]
+            [clojure.spec.alpha :as s]
+            [clojure.spec.gen.alpha :as gen]))
+
+(defrecord LinkedGraph [nds lks])
+
+;; spec
+(defn- correct-linked-graph
+  [{nds :nds lks :lks}]
+    (every? (partial l/in-domain? nds) lks))
+
+(s/def ::nds :chu.graph/nodes)
+(s/def ::lks :chu.graph/links)
+(s/def ::linked-graph
+  (s/with-gen
+    (s/and (s/keys :un-req [::nds ::lks])
+           correct-linked-graph
+           #(instance? LinkedGraph %))
+    (fn []
+      (gen/bind (s/gen (s/coll-of :chu.link/node :kind set?))
+              (fn [nds]
+                (if (empty? nds)
+                  (s/gen (s/and set? empty?))
+                  (gen/fmap
+                   #(->LinkedGraph nds %)
+                   (s/gen :chu.graph/links
+                          {:chu.link/node (fn [] (gen/elements nds))}))))))))
+
+(s/fdef ->LinkedGraph
+        :args (s/and (s/cat :nds ::nds :lks ::lks)
+                     correct-linked-graph)
+        :ret ::linked-graph)
+
+(def EMPTY (->LinkedGraph #{} #{}))
 
 (defn links->adjency
   "Return the map where graph nodes are keys and vals are sequence of nodes adjacent to the key node.
   Exemple : a -> b(p1); a -> c(p2); b -> c(p3) => {a {b p1, c p2} b {c p3} c {}}"
   [nodes links]
-  (reduce (fn [m {x :from y :to :as l}]
-            (update m x #(assoc % y (l/params l))))
+  (reduce (fn [m {x :from y :to p :params}]
+            (update m x #(assoc % y p)))
           (zipmap nodes (repeat {})) links))
 
 (defn- set-conj-link
   [mg s l]
-  (if (contains? s l)
-    (conj (disj s l)
-          (l/make-link
-           (:from l)
-           (:to l)
-           (mg (l/params l)
-               (l/params (get s l)))))
+  (if (some (partial l/loosely-equal l) s)
+    (->> s
+       (map #(if (l/loosely-equal % l)
+               (update % :params mg (:params l))
+               %))
+       set)
     (conj s l)))
-
-(defrecord LinkedGraph [nds lks])
-
-(def EMPTY (->LinkedGraph #{} #{}))
 
 (def linked-graph-mixin
   {:nodes (fn [g] (:nds g))
@@ -48,7 +76,7 @@
    :reversed (fn [g]
                (->LinkedGraph
                 (g/nodes g)
-                (set (map l/flip-link (g/links g)))))
+                (set (map l/flip (g/links g)))))
 
    :empty-graph (fn [_] EMPTY)
 
@@ -58,12 +86,13 @@
                      (set (filter mpred (g/nodes g)))
                      (set (filter (fn [{fr :from to :to}] (and (mpred fr) (mpred to))) (g/links g))))))
 
-   :filter-link (fn [g pred] (->LinkedGraph (g/nodes g) (filter pred (g/links g))))
-
    :add-node (fn [g n]
                (update g :nds conj n))
 
    :add-link (fn [g mg l]
-               (-> g (g/add-node (:from l)) (g/add-node (:to l)) (update :lks (partial set-conj-link mg) l)))})
+               (-> g
+                   (g/add-node (:from l))
+                   (g/add-node (:to l))
+                   (update :lks (partial set-conj-link mg) l)))})
 
 (extend LinkedGraph GraphProtocol (merge default-graph-protocol-mixin linked-graph-mixin))
