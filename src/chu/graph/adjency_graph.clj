@@ -25,19 +25,32 @@
 ;; adjency, reversed, map-node, filter-node
 (defrecord AdjencyGraph [adj])
 
-(s/def ::adjency-graph
+(defn- correct-adjency
+  [adj]
+  (set/subset? (apply set/union (map (comp set keys)
+                                     (vals adj)))
+               (set (keys adj))))
+
+(defn- adjency-generator
+  []
+  (gen/bind (s/gen (s/coll-of :chu.link/node :kind set? :max-count 10))
+            (fn [nds]
+              (if (empty? nds)
+                (s/gen (s/and empty? map?))
+                (gen/fmap
+                 #(zipmap nds %)
+                 (s/gen (s/coll-of (s/map-of nds :chu.link/params) :count (count nds))))))))
+(s/def ::adj
   (s/with-gen
     (s/and (s/map-of :chu.link/node
                      (s/map-of :chu.link/node :chu.link/params))
-           #(set/subset? (set (keys %)) (apply set/union (map (comp set keys) (vals %)))))
-    (fn []
-      (gen/bind (s/gen (s/coll-of :chu.link/node :kind set? :max-count 20 :distinct true))
-                (fn [nds]
-                  (if (empty? nds)
-                    (s/gen (s/and map? empty?))
-                    (gen/fmap
-                     #(zipmap nds %)
-                     (s/gen (s/coll-of (s/map-of nds :chu.link/params) :max-count 20)))))))))
+           correct-adjency)
+    adjency-generator))
+
+(s/def ::adjency-graph
+  (s/with-gen
+    #(instance? AdjencyGraph %)
+    #(gen/fmap ->AdjencyGraph (s/gen ::adj))))
 
 (def EMPTY (->AdjencyGraph {}))
 
@@ -46,10 +59,10 @@
   (let [mpred (memoize pred)
         adj (g/adjency g)
         keep #(select-keys % (filter pred (keys %)))]
-    (->>
-     (keep)
-     (h/map-vals keep)
-     (->AdjencyGraph))))
+    (->> adj
+         (keep)
+         (h/map-vals keep)
+         (->AdjencyGraph))))
 
 (defn- filter-link
   [g pred]
@@ -88,7 +101,6 @@
                    (g/add-node to)
                    (#(if (get-in % [:adj fr to])
                        (update-in % [:adj fr to] mg p)
-                       (assoc-in % [:adj fr to] p)))))
-   })
+                       (assoc-in % [:adj fr to] p)))))})
 
 (extend AdjencyGraph GraphProtocol (merge default-graph-protocol-mixin adjency-graph-mixin))

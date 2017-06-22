@@ -101,13 +101,13 @@
                    ret (map-node (or (:merge-params args) merge) mf g)]
                (and
                  ;; nodes are the same modulo mapping
-                 (= (nodes ret)
-                    (set (map mf (nodes g))))
+                (= (nodes ret)
+                   (set (map mf (nodes g))))
                  ;; links are still here modulo mapping
-                 (= (set (map l/unparam (links ret)))
-                    (set (map (fn [{fr :from to :to}]
-                                (l/make-link (mf fr) (mf to)))
-                              (links g)))))))
+                (= (set (map l/unparam (links ret)))
+                   (set (map (fn [{fr :from to :to}]
+                               (l/make-link (mf fr) (mf to)))
+                             (links g)))))))
 (defn map-node
   "Transform nodes of the graph using `f` : a -> b => (f a) -> (f b).
    `merge-params` is used in case of transformation collision.
@@ -135,7 +135,7 @@
                 ;; equality of links
                 (= (links ret)
                    (->> g links (filter (fn [{fr :from to :to}]
-                                            (and (mpred fr) (mpred to))))
+                                          (and (mpred fr) (mpred to))))
                         set)))))
 (defn filter-node
   "Make a graph where you keep only nodes verifying pred."

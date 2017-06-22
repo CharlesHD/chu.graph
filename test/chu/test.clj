@@ -4,7 +4,7 @@
             [clojure.test.check :as tc]))
 
 ;; just here to keep the tc dependency
-(defn- dum [] (tc/quick-check ))
+(defn- dum [] (tc/quick-check))
 (defmacro defspec-test
   ([name sym-or-syms] `(defspec-test ~name ~sym-or-syms nil))
   ([name sym-or-syms opts]

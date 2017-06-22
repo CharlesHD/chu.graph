@@ -3,13 +3,11 @@
             [clojure.spec.gen.alpha :as gen]
             [clojure.spec.test.alpha :as stest]))
 
-(s/def ::params map?)
+(s/def ::params (s/map-of any? any? :max-count 10))
 (s/def ::node (s/and any? (complement nil?)))
 (s/def ::from ::node)
 (s/def ::to ::node)
 (s/def ::link (s/keys :req-un [::from ::to ::params]))
-
-(defrecord Link [from to params])
 
 (s/fdef make-link
         :args (s/cat :from ::from :to ::to :params (s/? ::params))
@@ -22,7 +20,7 @@
 (defn make-link
   "Link constructor"
   ([from to params]
-   (->Link from to params))
+   {:from from :to to :params params})
   ([from to]
    (make-link from to {})))
 
@@ -34,7 +32,7 @@
 (defn update-params
   "Change a link params using `f`. New links params is (f `l`)"
   [f l]
-  (assoc l :params ( f l)))
+  (assoc l :params (f l)))
 
 (s/fdef lift
         :args (s/cat :f (s/fspec :args (s/cat :from ::from :to ::to :params ::params)))

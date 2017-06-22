@@ -68,10 +68,11 @@
 
 (defn adjency->links
   "Given the adjency of a graph, get you the links of the graph"
-  [adjency]
-  (for [[x adj] adjency
-        [y p] adj]
-    (make-link x y p)))
+  [nodes adjency]
+  (set
+   (for [x nodes
+         [y p] (adjency x)]
+     (make-link x y p))))
 
 (defn default-add-graph
   "Add the graph g2 to the graph g. It's the union of nodes and links of both graph."
@@ -111,7 +112,6 @@
           (reduce add-node (empty-graph g) (nodes g))
           (map (partial l/update-params f) (links g))))
 
-
 (defn default-filter-link
   [g pred]
   (make-graph g merge (nodes g) (set (filter pred (links g)))))
@@ -121,8 +121,8 @@
 ;; adjency, map-node, filter-node
 (def default-graph-protocol-mixin
   {:nodes (fn [g] ((comp set keys adjency) g))
-   :links (fn [g] ((comp adjency->links adjency) g))
-   :reversed (fn [g] (reduce add-link
+   :links (fn [g] (adjency->links (nodes g) (adjency g)))
+   :reversed (fn [g] (reduce #(add-link %1 merge %2)
                              (reduce add-node
                                      (empty-graph g)
                                      (nodes g))

@@ -17,31 +17,33 @@
             [chu.link :as l]
             [chu.graph :as g]
             [clojure.spec.alpha :as s]
-            [clojure.spec.gen.alpha :as gen]))
+            [clojure.spec.gen.alpha :as gen]
+            [clojure.set :as set]))
 
 (defrecord LinkedGraph [nds lks])
 
 ;; spec
 (defn- correct-linked-graph
   [{nds :nds lks :lks}]
-    (every? (partial l/in-domain? nds) lks))
+  (set/subset? (reduce #(conj %1 (:from %2) (:to %2)) #{} lks) nds))
 
 (s/def ::nds :chu.graph/nodes)
 (s/def ::lks :chu.graph/links)
+(defn- linked-graph-generator
+  []
+  (gen/bind (s/gen ::nds)
+            (fn [nds]
+              (gen/fmap
+               #(->LinkedGraph nds %)
+               (if (empty? nds)
+                 (s/gen (s/and empty? set?))
+                 (s/gen ::lks
+                        {:chu.link/node (fn [] (s/gen nds))}))))))
 (s/def ::linked-graph
   (s/with-gen
-    (s/and (s/keys :un-req [::nds ::lks])
-           correct-linked-graph
-           #(instance? LinkedGraph %))
-    (fn []
-      (gen/bind (s/gen (s/coll-of :chu.link/node :kind set?))
-              (fn [nds]
-                (if (empty? nds)
-                  (s/gen (s/and set? empty?))
-                  (gen/fmap
-                   #(->LinkedGraph nds %)
-                   (s/gen :chu.graph/links
-                          {:chu.link/node (fn [] (gen/elements nds))}))))))))
+    (s/and #(instance? LinkedGraph %)
+           #_correct-linked-graph)
+    linked-graph-generator))
 
 (s/fdef ->LinkedGraph
         :args (s/and (s/cat :nds ::nds :lks ::lks)
@@ -62,10 +64,10 @@
   [mg s l]
   (if (some (partial l/loosely-equal l) s)
     (->> s
-       (map #(if (l/loosely-equal % l)
-               (update % :params mg (:params l))
-               %))
-       set)
+         (map #(if (l/loosely-equal % l)
+                 (update % :params mg (:params l))
+                 %))
+         set)
     (conj s l)))
 
 (def linked-graph-mixin

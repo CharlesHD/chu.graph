@@ -19,7 +19,7 @@
 (defn- xf
   [{p :p f :f}]
   (filter p)
-  (map #(l/assoc-params % (f %))))
+  (map #(assoc % :params (f %))))
 
 (defn- lks
   [{nds :nodes}]
@@ -45,7 +45,7 @@
 
 (defn- reversed
   [{nds :nodes p :p f :f}]
-  (->FuncGraph nds (comp p l/flip-link) (comp f l/flip-link)))
+  (->FuncGraph nds (comp p l/flip) (comp f l/flip)))
 
 (defn- map-node
   [{nds :nodes p :p fa :f} mg f]
@@ -106,7 +106,6 @@
    :prot-add-link add-link
    :add-node add-node
    :prot-add-graph add-graph
-   :prot-intersection-graph intersection-graph
-   })
+   :prot-intersection-graph intersection-graph})
 
 (extend FuncGraph GraphProtocol (merge default-graph-protocol-mixin funcgraph-mixin))

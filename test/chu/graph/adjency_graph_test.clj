@@ -1,12 +1,13 @@
-(ns chu.graph.linked-graph-test
-  (:require [chu.graph :as g]
-            [chu.graph.linked-graph :as sut]
+(ns chu.graph.adjency-graph-test
+  (:require [chu.graph.adjency-graph :as sut]
             [chu.test :refer [defspec-test]]
-            [clojure.spec.alpha :as s]))
+            [clojure.spec.alpha :as s]
+            [chu.graph :as g]
+            [clojure.test :as t]))
 
-(def opts {:clojure.spec.test.check/opts {:num-tests 20
-                                          :max-size 50}
-           :gen {:chu.graph/graph (fn [] (s/gen :chu.graph.linked-graph/linked-graph))}})
+(def opts {:clojure.spec.test.check/opts {:num-tests 20 :max-size 50}
+           :gen {:chu.graph/graph
+                 (fn [] (s/gen :chu.graph.adjency-graph/adjency-graph))}})
 
 (defspec-test nodes
   `g/nodes

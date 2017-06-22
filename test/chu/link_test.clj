@@ -2,7 +2,7 @@
   (:require [chu.link :as sut]
             [chu.test :refer [defspec-test]]))
 
-(def opts {:clojure.spec.test.check/opts {:num-tests 50}})
+(def opts {:clojure.spec.test.check/opts {:num-tests 20 :max-size 50}})
 
 (defspec-test make-link
   `sut/make-link
