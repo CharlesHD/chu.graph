@@ -10,11 +10,22 @@
               GraphProtocol]]
             [chu.link :as l]
             [chulper.core :as h]
-            [clojure.set :as set]))
+            [clojure.set :as set]
+            [clojure.spec.alpha :as s]
+            [clojure.spec.gen.alpha :as gen]))
 
 (defrecord FuncGraph [nodes p f])
 
 (def EMPTY (->FuncGraph (hash-set) (constantly false) (constantly {})))
+;;spec
+(s/def ::nodes :chu.graph/nodes)
+(s/def ::p (s/fspec :args (s/cat :l :chu.link/link)))
+(s/def ::f (s/fspec :args (s/cat :l :chu.link/link)
+                    :ret :chu.link/params))
+(s/def ::proto-func-graph (s/keys :req-un [::nodes ::p ::f]))
+(s/def ::func-graph (s/with-gen
+                      #(instance? FuncGraph %)
+                      #(gen/fmap map->FuncGraph (s/gen ::proto-func-graph))))
 
 (defn- xf
   [{p :p f :f}]
@@ -32,7 +43,7 @@
 
 (defn- links
   [g]
-  (sequence (xf g) (lks g)))
+  (into (hash-set) (xf g) (lks g)))
 
 (defn- adjency
   [{nds :nodes p :p f :f}]
