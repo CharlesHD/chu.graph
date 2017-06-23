@@ -6,7 +6,7 @@
 
 (def opts {:clojure.spec.test.check/opts {:num-tests 20
                                           :max-size 50}
-           :gen {:chu.graph/graph (fn [] (s/gen :chu.graph.linked-graph/linked-graph))}})
+           :gen {:chu.graph/graph (fn [] (clojure.spec.alpha/gen :chu.graph.linked-graph/linked-graph))}})
 
 (defspec-test nodes
   `g/nodes
@@ -82,4 +82,56 @@
 
 (defspec-test make-graph
   `g/make-graph
+  opts)
+
+(defspec-test remove-node
+  `g/remove-node
+  opts)
+
+(defspec-test remove-link
+  `g/remove-link
+  opts)
+
+(defspec-test undirect
+  `g/undirect
+  opts)
+
+(defspec-test line-graph
+  `g/line-graph
+  opts)
+
+(defspec-test seed-graph
+  `g/seed-graph
+  opts)
+
+(defspec-test remove-unlinked-nodes
+  `g/remove-unlinked-nodes
+  opts)
+
+(defspec-test dfs
+  `g/dfs
+  opts)
+
+(defspec-test scc
+  `g/scc
+  opts)
+
+(defspec-test dijkstra
+  `g/dijkstra
+  opts)
+
+(defspec-test components
+  `g/components
+  opts)
+
+(defspec-test weak-components
+  `g/weak-components
+  opts)
+
+(defspec-test graph-coverage
+  `g/graph-coverage
+  opts)
+
+(defspec-test chain-graph
+  `g/chain-graph
   opts)

@@ -100,10 +100,10 @@
                    g (:g args)
                    ret (map-node (or (:merge-params args) merge) mf g)]
                (and
-                 ;; nodes are the same modulo mapping
+                ;; nodes are the same modulo mapping
                 (= (nodes ret)
                    (set (map mf (nodes g))))
-                 ;; links are still here modulo mapping
+                ;; links are still here modulo mapping
                 (= (set (map l/unparam (links ret)))
                    (set (map (fn [{fr :from to :to}]
                                (l/make-link (mf fr) (mf to)))
@@ -335,21 +335,35 @@
   ([g ns lks]
    (make-graph g merge ns lks)))
 
+(s/fdef remove-node
+        :args (s/cat :pred (s/fspec :args (s/cat :x ::node))
+                     :g ::graph)
+        :ret ::graph)
 (defn remove-node
   "Make a graph without nodes verifying pred."
   [pred g]
-  (filter-node g (complement pred)))
+  (filter-node (complement pred) g))
 
+(s/fdef remove-link
+        :args (s/cat :pred (s/fspec :args (s/cat :x :chu.link/link))
+                     :g ::graph)
+        :ret ::graph)
 (defn remove-link
   "Make a graph without links verifying pred."
   [pred g]
-  (filter-link g (complement pred)))
+  (filter-link (complement pred) g))
 
+(s/fdef undirect
+        :args (s/cat :g ::graph)
+        :ret ::graph)
 (defn undirect
-  "Add missing return link to `g` : If a->b is a link then b->a will be too."
+  "Add missing return link to `g` : If a->b(p) is a link then b->a(p) will be too."
   [g]
-  (add-graph g (reversed g) merge))
+  (add-graph g (reversed g)))
 
+(s/fdef line-graph
+        :args (s/cat :g ::graph)
+        :ret ::graph)
 (defn line-graph
   "Line-graph of g. Every link of g is a node in the line-graph. Two line-graph nodes are linked
    If their corresponding links share a node in g.
@@ -363,25 +377,31 @@
                    (make-link l1 l2))]
     (make-graph g line-nodes line-lks)))
 
+(s/fdef seed-graph
+        :args (s/cat :g ::graph :seeds ::nodes :node-limit number?)
+        :ret ::graph)
 (defn seed-graph
   "construct a subgraph of g by growing around the seeds until there is node-limit nodes."
   [g seeds node-limit]
   (let [n (nodes g)
-        adj (adjency g)
-        grow (fn [s] (distinct (reduce concat s (map adj s))))
+        adj (comp keys (adjency g))
+        grow (fn [s] (apply set/union s (map adj s)))
         stop #(or (>= (count %) node-limit) (= (count %) (count n)))
         nodes? (->> (fixpoint grow seeds stop)
                     (take node-limit)
                     set)]
-    (filter-node g nodes?)))
+    (filter-node nodes? g)))
 
+(s/fdef remove-unlinked-nodes
+        :args (s/cat :g ::graph)
+        :ret ::graph)
 (defn remove-unlinked-nodes
   "go away you unlinked node !"
   [g]
   (let [deg (degrees g)]
-    (remove-node g #(zero? (deg %)))))
+    (remove-node #(zero? (deg %)) g)))
 
-(defn dfs
+(defn- dfs-
   "Depth first search. Short form of the method passes through all the
   nodes of the graph even if it's disconnected .
   (nodes-fn graph) expected to return list of all the nodes in the graph.
@@ -390,15 +410,13 @@
   Returns hash-map where nodes are associated with a pair :idx, :leader.
   :idx stores finishing index of the node traversal (post-order counter)
   :leader first finishing index of the current DFS."
-  ([graph]
-   (let [adj (adjency graph)]
-     (dfs graph nodes (fn [_ n] (adj n)))))
+
   ([graph nodes-fn child-fn]
    (second
     (reduce ;; Start DFS from each node of the graph
      (fn [[idx result passed :as args] next-node]
        (if (not (passed next-node)) ;; Don't do DFS if node is marked
-         (dfs idx idx result passed graph next-node child-fn)
+         (dfs- idx idx result passed graph next-node child-fn)
          args))
      [0 {} #{}] ;;Initial index, result, set of passed nodes
      (nodes-fn graph))))
@@ -406,13 +424,26 @@
    (let [[idx result passed]
          (reduce (fn [[idx result passed :as args] child-node]
                    (if (not (passed child-node))
-                     (dfs idx leader result passed graph child-node child-fn)
+                     (dfs- idx leader result passed graph child-node child-fn)
                      args))
                  [idx result (conj passed node)]
                  (child-fn graph node))]
      [(inc idx)
       (assoc result node {:idx idx :leader leader})
       passed])))
+
+(s/fdef dfs
+        :args (s/cat :g ::graph)
+        :ret (s/map-of ::node (s/map-of keyword? int?)))
+(defn dfs
+  "Depth first search. Short form of the method passes through all the
+  nodes of the graph even if it's disconnected .
+  Returns hash-map where nodes are associated with a pair :idx, :leader.
+  :idx stores finishing index of the node traversal (post-order counter)
+  :leader first finishing index of the current DFS."
+  [graph]
+  (let [adj (adjency graph)]
+    (dfs- graph nodes (fn [_ n] (adj n)))))
 
 (defn- pass-two
   "Calls DFS making sure that traversal is done in the reverse :idx order."
@@ -423,9 +454,9 @@
                          (sort-by (comp :idx second)) reverse
                          ;;Return only nodes
                          (map first)))]
-    (dfs graph nodes-fn child-fn)))
+    (dfs- graph nodes-fn child-fn)))
 
-(defn scc
+(defn- scc-
   "Finds strongly connected components of the given directed graph.
   Returns lists of nodes grouped into SCC.
   (nodes-fn graph) expected to return list of all the nodes in the graph.
@@ -434,21 +465,28 @@
   (outgoing-fn graph node) expected to return all the nodes with
    transitions from the given node."
   ([graph nodes-fn incoming-fn outgoing-fn]
-   (let [result (dfs graph nodes-fn incoming-fn)
+   (let [result (dfs- graph nodes-fn incoming-fn)
          leaders-idx (pass-two graph result outgoing-fn)]
      (for [scc-group (vals (group-by (comp :leader second) leaders-idx))]
-       (for [[node & _] scc-group] node))))
-  ([graph]
-   (let [adj-map (adjency graph)
-         adj (fn [g n] (adj-map n))
-         radj-map (ancestry graph)
-         radj (fn [g n] (radj-map n))]
-     (scc graph nodes adj radj))))
+       (for [[node & _] scc-group] node)))))
+
+(s/fdef scc
+        :args (s/cat :graph ::graph)
+        :ret (s/coll-of (s/coll-of ::node)))
+(defn scc
+  "Finds strongly connected components of the given directed graph.
+  Returns lists of nodes grouped into SCC."
+  [graph]
+  (let [adj-map (adjency graph)
+        adj (fn [g n] (adj-map n))
+        radj-map (ancestry graph)
+        radj (fn [g n] (radj-map n))]
+    (scc- graph nodes adj radj)))
 
 (defn- remove-keys [m pred]
   (select-keys m (filter (complement pred) (keys m))))
 
-(defn dijkstra
+(defn dijkstra-
   "Computes single-source shortest path distances in a directed graph.
 
   Given a node n, (f n) should return a map with the successors of n
@@ -462,54 +500,40 @@
         (recur (merge-with min (pop q) dist) (assoc r v d)))
       r)))
 
-(defn g-dijkstra
-  "like dijkstra but works on unweighted graph"
-  [start g]
-  (let [adj (adjency g)]
-    (dijkstra start
-              (fn [n] (zipmap (adj n) (repeat 1))))))
+(s/fdef dijkstra
+        :args (s/cat :start ::node
+                     :g ::graph
+                     :f (s/? (s/fspec :args (s/cat :x :chu.link/params)
+                                      :ret number?)))
+        :ret (s/map-of ::node number?))
+(defn dijkstra
+  "Computes single-source shortest path distances in a directed graph.
+  Given a link a->b(p), (f p) should return the distance (non-negative) from a
+  to b.
+  In short form (without `f`) each link distance is equal to 1.
+  Returns a map from nodes to their distance from start."
+  ([start g f]
+   (let [adj (adjency g)
+         distadj (fn [n] (map-vals f (adj n)))]
+     (dijkstra- start distadj)))
+  ([start g]
+   (dijkstra start g (constantly 1))))
 
-;; (defn mst
-;;   "calculate a minimum spanning tree for graph. Weight is a function from graph link to number"
-;;   [graph weight]
-;;   (let [lks (links graph)
-;;         nds (nodes graph)
-;;         lks (sort-by weight < lks)
-;;         parent (apply uf/union-find nds)
-;;         tree (loop [[l & ls] lks
-;;                     uf parent
-;;                     tree '()]
-;;                (if (nil? l) tree
-;;                    (let [from (:from l)
-;;                          to (:to l)
-;;                          [uf0 a] (uf/get-canonical uf from)
-;;                          [uf1 b] (uf/get-canonical uf0 to)]
-;;                      (if (= a b)
-;;                        (recur ls uf1 tree)
-;;                        (recur ls (uf/union uf1 from to) (conj tree l))))))]
-;;     (make-graph nds tree)))
-
-;; (defn count-DAG-pathcover-numbre
-;;   "Given a DAG count its pathcover number. Expects (links dag) to be ordered as
-;;   the dag require."
-;;   [dag]
-;;   (let [lks (links dag)]
-;;     (reduce
-;;      (fn [m {fr :from to :to}]
-;;        (cond-> m
-;;          (not (get m fr)) (assoc fr {:fathers [fr] :source :yes :count 0})
-;;          (not (get m to)) (assoc to {:fathers [fr] :count 0})
-;;          )))))
-
+(s/fdef components
+        :args (s/cat :g ::graph)
+        :ret (s/coll-of ::graph))
 (defn components
   "Return strongly connected components of `g` as graph whereas scc returns them as list of nodes"
   [g]
-  (map #(filter-node g (set %)) (scc g)))
+  (map #(filter-node (set %) g) (scc g)))
 
+(s/fdef weak-components
+        :args (s/cat :g ::graph)
+        :ret (s/coll-of ::graph))
 (defn weak-components
   "Return weakly connected components of `g` as graph."
   [g]
-  (map #(filter-node g (set %)) (scc (undirect g))))
+  (map #(filter-node (set %) g) (scc (undirect g))))
 
 (defn- f-score
   [beta p r]
@@ -519,11 +543,14 @@
       (/ (* (inc b2) p r)
          (+ (* b2 p) r)))))
 
+(s/fdef graph-coverage
+        :args (s/cat :g1 ::graph :g2 ::graph)
+        :ret map?)
 (defn graph-coverage
   "Compute the link coverage of g2 by g1."
   [g1 g2]
-  (let [lks1 (set (links g1))
-        lks2 (set (links g2))
+  (let [lks1 (links g1)
+        lks2 (links g2)
         corr (set/intersection lks1 lks2)
         nc (count corr)
         r (/ nc (max (count lks2) 1))
@@ -531,6 +558,9 @@
         f #(f-score % p r)]
     {:recall r :precision p :f-score (f 1)}))
 
+(s/fdef kronecker
+        :args (s/cat :g1 ::graph :g2 ::graph)
+        :ret ::graph)
 (defn kronecker [g1 g2]
   (let [pcart (fn [coll1 coll2] (for [x coll1 y coll2] [x y]))
         a1 (adjency g1)
@@ -541,9 +571,15 @@
                                y' (a2 y)]
                            (make-link [x y] [x' y'])))))
 
+(s/fdef iterate-kronecker
+        :args (s/cat :g ::graph :n (s/and pos-int? #(< % 4)))
+        :ret ::graph)
 (defn iterate-kronecker [g n]
   (reduce kronecker (repeat n g)))
 
+(s/fdef chain-graph
+        :args (s/cat :g ::graph :coll (s/coll-of ::node))
+        :ret ::graph)
 (defn chain-graph
   "Transform a sequence into a chain graph where each next element is link by the previous one"
   [g coll]
@@ -551,6 +587,5 @@
     (empty? coll) g
     (= 1 (count coll)) (add-node g (first coll))
     :else (recur (add-link g
-                           (make-link (first coll) (second coll))
-                           merge)
+                           (make-link (first coll) (second coll)))
                  (rest coll))))
