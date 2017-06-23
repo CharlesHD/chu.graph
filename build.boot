@@ -1,4 +1,4 @@
-(def +version+ "0.1.0")
+(def +version+ "0.1.1")
 
 (set-env!
  :source-paths #{"src"}
@@ -16,13 +16,16 @@
 
 (task-options!
  pom {:project 'chu.graph
-      :version +version+}
+      :version +version+
+      :description "a graph library"
+      :url "https://github.com/CharlesHD/chu.graph"
+      :scm {:url "https://github.com/CharlesHD/chu.graph"}}
  jar {:manifest {"Foo" "bar"}})
 
 (bootlaces! +version+)
 
 (deftask testing
   "Profile setup for running tests."
-[]
+  []
   (set-env! :source-paths #(conj % "test"))
   identity)
