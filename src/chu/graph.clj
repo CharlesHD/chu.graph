@@ -325,7 +325,7 @@
   ([g mg ns lks]
    (prot/make-graph g mg ns lks))
   ([g ns lks]
-   (make-graph g merge ns lks)))
+   (prot/make-graph g merge ns lks)))
 
 (s/fdef remove-node
         :args (s/cat :pred (s/fspec :args (s/cat :x ::node))
