@@ -315,19 +315,11 @@
   (prot/reduce-graph nf lf init g))
 
 (s/fdef make-graph
-        :args (s/or :complete (s/cat :g ::graph
-                                     :mg ::merge-params
-                                     :ns (s/coll-of ::node)
-                                     :lks (s/coll-of :chu.link/link))
-                    :quick (s/cat :g ::graph
-                                  :ns (s/coll-of ::node)
-                                  :lks (s/coll-of :chu.link/link)))
-        :ret ::graph
-        :fn #(if-let [args (-> % :args :complete)]
-               (and (= (-> args :ns set) (-> % :ret nodes))
-                    (= (->> args :lks)
-                       (-> % :ret links)))
-               true))
+        :args (s/cat :g ::graph
+                     :mg (s/? ::merge-params)
+                     :ns (s/coll-of ::node)
+                     :lks (s/coll-of :chu.link/link))
+        :ret ::graph)
 (defn make-graph
   "Construct a new graph like g but with ns as nodes and lks as links."
   ([g mg ns lks]
