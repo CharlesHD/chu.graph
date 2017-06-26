@@ -117,7 +117,7 @@
    - a -> n1(p1) ; a -> n2(p2) => a -> c(merge-params p1 p2)
    - n1 -> a(p1) ; n2 -> a(p2) => c -> a(merge-params p1 p2)"
   ([merge-params f g] (prot/map-node g merge-params f))
-  ([f g] (map-node merge f g)))
+  ([f g] (prot/map-node g merge f)))
 
 (declare filter-node)
 (s/fdef filter-node
