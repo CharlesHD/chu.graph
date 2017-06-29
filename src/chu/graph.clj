@@ -473,7 +473,7 @@
         adj (fn [g n] (adj-map n))
         radj-map (ancestry graph)
         radj (fn [g n] (radj-map n))]
-    (scc- graph nodes adj radj)))
+    (scc- graph nodes radj adj)))
 
 (defn- remove-keys [m pred]
   (select-keys m (filter (complement pred) (keys m))))
