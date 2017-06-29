@@ -434,7 +434,7 @@
   :idx stores finishing index of the node traversal (post-order counter)
   :leader first finishing index of the current DFS."
   [graph]
-  (let [adj (adjency graph)]
+  (let [adj (comp keys (adjency graph))]
     (dfs- graph nodes (fn [_ n] (adj n)))))
 
 (defn- pass-two
@@ -469,8 +469,8 @@
   "Finds strongly connected components of the given directed graph.
   Returns lists of nodes grouped into SCC."
   [graph]
-  (let [adj (comp keys (adjency graph))
-        radj (comp keys (ancestry graph))]
+  (let [adj (comp keys (adjency graph) (fn [_ b] b))
+        radj (comp keys (ancestry graph) (fn [_ b] b))]
     (scc- graph nodes radj adj)))
 
 (defn- remove-keys [m pred]
