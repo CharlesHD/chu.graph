@@ -469,10 +469,8 @@
   "Finds strongly connected components of the given directed graph.
   Returns lists of nodes grouped into SCC."
   [graph]
-  (let [adj-map (adjency graph)
-        adj (fn [g n] (adj-map n))
-        radj-map (ancestry graph)
-        radj (fn [g n] (radj-map n))]
+  (let [adj (comp keys (adjency graph))
+        radj (comp keys (ancestry graph))]
     (scc- graph nodes radj adj)))
 
 (defn- remove-keys [m pred]
