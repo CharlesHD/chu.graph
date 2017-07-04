@@ -3,7 +3,7 @@
             [clojure.spec.gen.alpha :as gen]
             [clojure.spec.test.alpha :as stest]))
 
-(s/def ::params (s/or :coll (s/map-of any? any? :max-count 10) :empty nil?))
+(s/def ::params (s/map-of any? any? :max-count 10))
 (s/def ::node (s/and any? (complement nil?)))
 (s/def ::from ::node)
 (s/def ::to ::node)
