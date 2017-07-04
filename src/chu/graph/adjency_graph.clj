@@ -82,6 +82,12 @@
               ng (if i (g/add-link g i) g)]
           (recur ng (inc treated)))))))
 
+(defn- add-node
+  [g n]
+  (if (get-in g [:adj n])
+    g ;; node already exists, do nothing.
+    (assoc-in g [:adj n] {})))
+
 (def adjency-graph-mixin
   {:adjency (fn [g] (:adj g))
 
@@ -91,10 +97,7 @@
 
    :filter-link filter-link
 
-   :add-node (fn [g n]
-               (if (get-in g [:adj n])
-                 g ;; node already exists, do nothing.
-                 (assoc-in g [:adj n] {})))
+   :add-node add-node
 
    :add-link (fn [g mg {fr :from to :to p :params}]
                (-> (g/add-node g fr)
