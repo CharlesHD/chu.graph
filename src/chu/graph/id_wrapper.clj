@@ -3,7 +3,7 @@
    It keeps a mapping between graph nodes and integers and
    transform the graph structure in an integer graph"
   (:require [chu.graph :as g]
-            [chu.graph.protocol :as prot :refer [GraphProtocol]]
+            [chu.graph.protocol :as prot :refer [GraphProtocol GraphWrapperProtocol]]
             [chu.link :as l]))
 
 (defrecord IdWrapperGraph [bij g])
@@ -112,16 +112,21 @@
 
 (defn wrap
   [g]
-  (prot/default-add-graph
+  (g/add-graph
    (->IdWrapperGraph
     (->Bijection {} {}) (g/empty-graph g))
-   merge
    g))
 
 (defn unwrap
   [{:keys [bij g]}]
   (g/map-node (:backward bij) g))
 
+(def wrapper-mixin
+  {:wrap (fn [_ g] (wrap g))
+   :unwrap unwrap
+   :inner :g})
+
+(extend IdWrapperGraph GraphWrapperProtocol wrapper-mixin)
 
 (def id-wrapper-graph-mixin
   {:nodes nodes

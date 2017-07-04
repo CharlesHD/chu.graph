@@ -53,6 +53,16 @@
     "The graph containing only nodes and links presents in both graphs.
      `merge-params` resolve params conflict."))
 
+(defprotocol GraphWrapperProtocol
+  "That's a graph which contains internally another graph for performance reasons"
+  (wrap [this g]
+    "Takes a graph and returned a wrapped graph.")
+  (unwrap [this]
+    "Extract the graph from it's wrapper.")
+  (inner [this]
+    "Return the internal graph representation of the wrapper."))
+
+
 (defn reduce-graph
   "Reduce through a graph.
   First reduce through nodes using `nf`.
