@@ -13,7 +13,7 @@
   map-node, filter-node : O(E + V)
   add-node, add-link : O(1*)
   * : In fact it's something like log_32(n)"
-  (:require [chu.graph.protocol :refer [default-graph-protocol-mixin GraphProtocol]]
+  (:require [chu.graph.protocol :as prot :refer [GraphProtocol]]
             [chu.link :as l]
             [chu.graph :as g]
             [clojure.spec.alpha :as s]
@@ -70,31 +70,35 @@
          set)
     (conj s l)))
 
-(def linked-graph-mixin
-  {:nodes (fn [g] (:nds g))
-   :links (fn [g] (:lks g))
-   :adjency (fn [g] (links->adjency (:nds g) (:lks g)))
-
-   :reversed (fn [g]
-               (->LinkedGraph
-                (g/nodes g)
-                (set (map l/flip (g/links g)))))
-
-   :empty-graph (fn [_] EMPTY)
-
-   :filter-node (fn [g pred]
-                  (let [mpred (memoize pred)]
-                    (->LinkedGraph
-                     (set (filter mpred (g/nodes g)))
-                     (set (filter (fn [{fr :from to :to}] (and (mpred fr) (mpred to))) (g/links g))))))
-
-   :add-node (fn [g n]
-               (update g :nds conj n))
-
-   :add-link (fn [g mg l]
-               (-> g
-                   (g/add-node (:from l))
-                   (g/add-node (:to l))
-                   (update :lks (partial set-conj-link mg) l)))})
-
-(extend LinkedGraph GraphProtocol (merge default-graph-protocol-mixin linked-graph-mixin))
+(extend-type LinkedGraph
+  GraphProtocol
+  ;; specific
+  (nodes [g] (:nds g))
+  (links [g] (:lks g))
+  (adjency [g] (links->adjency (:nds g) (:lks g)))
+  (reversed [g] (->LinkedGraph
+                 (g/nodes g)
+                 (set (map l/flip (g/links g)))))
+  (empty-graph [g] EMPTY)
+  (filter-node [g pred]
+    (let [mpred (memoize pred)]
+      (->LinkedGraph
+       (set (filter mpred (g/nodes g)))
+       (set (filter (fn [{fr :from to :to}] (and (mpred fr) (mpred to))) (g/links g))))))
+  (filter-link [g pred] (prot/default-filter-link g pred))
+  (add-node [g node]
+    (update g :nds conj node))
+  (add-link [g mg link]
+    (-> g
+        (g/add-node (:from link))
+        (g/add-node (:to link))
+        (update :lks (partial set-conj-link mg) link)))
+  ;; generic
+  (ancestry [g] (prot/default-ancestry g))
+  (in-degrees [g] (prot/default-in-degrees g))
+  (out-degrees [g] (prot/default-out-degrees g))
+  (degrees [g] (prot/default-degrees g))
+  (map-node [g mg f] (prot/default-map-node g mg f))
+  (map-link [g f] (prot/default-map-link g f))
+  (add-graph [g mg g2] (prot/default-add-graph g mg g2))
+  (intersection-graph [g mg g2] (prot/default-intersection-graph g mg g2)))

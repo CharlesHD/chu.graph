@@ -126,23 +126,33 @@
   [g pred]
   (make-graph g merge (nodes g) (set (filter pred (links g)))))
 
-;; Default Implementation of the Graph Protocol.
-;; No default implementation for :
-;; adjency, map-node, filter-node
-(def default-graph-protocol-mixin
-  {:nodes (fn [g] ((comp set keys adjency) g))
-   :links (fn [g] (adjency->links (nodes g) (adjency g)))
-   :reversed (fn [g] (reduce #(add-link %1 merge %2)
-                             (reduce add-node
-                                     (empty-graph g)
-                                     (nodes g))
-                             (map l/flip (links g))))
-   :ancestry (fn [g] ((comp adjency reversed) g))
-   :in-degrees (fn [g] (map-vals count (adjency g)))
-   :out-degrees (fn [g] (map-vals count (ancestry g)))
-   :degrees (fn [g] (merge-with + (in-degrees g) (out-degrees g)))
-   :map-node default-map-node
-   :map-link default-map-link
-   :filter-link default-filter-link
-   :add-graph default-add-graph
-   :intersection-graph default-intersection-graph})
+(defn default-nodes
+  [g]
+  ((comp set keys adjency) g))
+
+(defn default-links
+  [g]
+  (adjency->links (nodes g) (adjency g)))
+
+(defn default-reversed
+  [g]
+  (reduce #(add-link %1 merge %2)
+          (reduce add-node
+                  (empty-graph g)
+                  (nodes g))
+          (map l/flip (links g))))
+
+(defn default-ancestry
+  [g] ((comp adjency reversed) g))
+
+(defn default-in-degrees
+  [g]
+  (map-vals count (adjency g)))
+
+(defn default-out-degrees
+  [g]
+  (map-vals count (ancestry g)))
+
+(defn default-degrees
+  [g]
+  (merge-with + (in-degrees g) (out-degrees g)))

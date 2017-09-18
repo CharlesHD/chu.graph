@@ -5,7 +5,8 @@
   (:require [chu.link :as l :refer [make-link]]
             [chu.graph.protocol :as prot]
             [chulper.core :refer [fixpoint map-vals]]
-            [clojure.data.priority-map :refer [priority-map]]
+            #?(:clj [clojure.data.priority-map :refer [priority-map]]
+               :cljs [tailrecursion.priority-map :refer [priority-map]])
             [clojure.set :as set]
             [clojure.spec.alpha :as s]
             [chulper.core :as h]))

@@ -14,7 +14,7 @@
   add-node, add-link : O(1*)
   * : In fact it's something like log_32(n)"
   (:require [chu.graph :as g]
-            [chu.graph.protocol :refer [default-graph-protocol-mixin GraphProtocol]]
+            [chu.graph.protocol :as prot :refer [GraphProtocol]]
             [chu.link :as l]
             [chulper.core :as h]
             [clojure.core.async :as a]
@@ -64,23 +64,24 @@
          (h/map-vals keep)
          (->AdjencyGraph))))
 
-(defn- filter-link
-  [g pred]
-  (let [gmake (a/chan (a/buffer (count (g/links g))))
-        total (count (g/links g))
-        adj (g/adjency g)]
-    (doseq [i (g/nodes g)]
-      (a/go (doseq [[j params] (adj i)]
-              (if (pred (l/make-link i j params))
-                (a/>! gmake (l/make-link i j params))
-                (a/>! gmake false)))))
-    (loop [g (reduce g/add-node EMPTY (g/nodes g))
-           treated 0]
-      (if (= treated total)
-        g
-        (let [i (a/<!! gmake)
-              ng (if i (g/add-link g i) g)]
-          (recur ng (inc treated)))))))
+#?(:clj
+   (defn- filter-link
+     [g pred]
+     (let [gmake (a/chan (a/buffer (count (g/links g))))
+           total (count (g/links g))
+           adj (g/adjency g)]
+       (doseq [i (g/nodes g)]
+         (a/go (doseq [[j params] (adj i)]
+                 (if (pred (l/make-link i j params))
+                   (a/>! gmake (l/make-link i j params))
+                   (a/>! gmake false)))))
+       (loop [g (reduce g/add-node EMPTY (g/nodes g))
+              treated 0]
+         (if (= treated total)
+           g
+           (let [i (a/<!! gmake)
+                 ng (if i (g/add-link g i) g)]
+             (recur ng (inc treated))))))))
 
 (defn- add-node
   [g n]
@@ -88,22 +89,33 @@
     g ;; node already exists, do nothing.
     (assoc-in g [:adj n] {})))
 
-(def adjency-graph-mixin
-  {:adjency (fn [g] (:adj g))
+(defn- add-link
+  [g mg {fr :from to :to p :params}]
+  (-> (g/add-node g fr)
+      (g/add-node to)
+      (#(if (get-in % [:adj fr to])
+          (update-in % [:adj fr to] mg p)
+          (assoc-in % [:adj fr to] p)))))
 
-   :empty-graph (constantly EMPTY)
-
-   :filter-node filter-node
-
-   :filter-link filter-link
-
-   :add-node add-node
-
-   :add-link (fn [g mg {fr :from to :to p :params}]
-               (-> (g/add-node g fr)
-                   (g/add-node to)
-                   (#(if (get-in % [:adj fr to])
-                       (update-in % [:adj fr to] mg p)
-                       (assoc-in % [:adj fr to] p)))))})
-
-(extend AdjencyGraph GraphProtocol (merge default-graph-protocol-mixin adjency-graph-mixin))
+(extend-type AdjencyGraph
+  GraphProtocol
+  ;; specific
+  (adjency [g] (:adj g))
+  (empty-graph [g] EMPTY)
+  (filter-node [g pred] (filter-node g pred))
+  (filter-link [g pred] #?(:clj (filter-link g pred)
+                           :cljs (prot/default-filter-link g pred)))
+  (add-node [g node] (add-node g node))
+  (add-link [g mg link] (add-link g mg link))
+  ;; generic
+  (nodes [g] (prot/default-nodes g))
+  (links [g] (prot/default-links g))
+  (reversed [g] (prot/default-reversed g))
+  (ancestry [g] (prot/default-ancestry g))
+  (in-degrees [g] (prot/default-in-degrees g))
+  (out-degrees [g] (prot/default-out-degrees g))
+  (degrees [g] (prot/default-degrees g))
+  (map-node [g mg f] (prot/default-map-node g mg f))
+  (map-link [g f] (prot/default-map-link g f))
+  (add-graph [g mg g2] (prot/default-add-graph g mg g2))
+  (intersection-graph [g mg g2] (prot/default-intersection-graph g mg g2)))

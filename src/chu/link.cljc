@@ -1,9 +1,8 @@
 (ns chu.link
   (:require [clojure.spec.alpha :as s]
-            [clojure.spec.gen.alpha :as gen]
-            [clojure.spec.test.alpha :as stest]))
+            [clojure.spec.gen.alpha :as gen]))
 
-(s/def ::params (s/map-of any? any? :max-count 10))
+(s/def ::params (s/map-of any? any? :max-count 50))
 (s/def ::node (s/and any? (complement nil?)))
 (s/def ::from ::node)
 (s/def ::to ::node)

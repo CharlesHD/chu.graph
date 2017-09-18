@@ -3,9 +3,9 @@
   Most of algorithmic costs are O(V^2)
   but memory usage is only O(V + P + F) where P is the predicate memory usage and F the param function one."
   (:require [chu.graph.protocol
+             :as prot
              :refer
              [default-add-graph
-              default-graph-protocol-mixin
               default-intersection-graph
               GraphProtocol]]
             [chu.link :as l]
@@ -105,18 +105,24 @@
                              ((:f g2) l))))
     (default-intersection-graph mg g g2)))
 
-(def funcgraph-mixin
-  {:nodes nodes
-   :links links
-   :adjency adjency
-   :map-node map-node
-   :filter-node filter-node
-   :filter-link filter-link
-   :reversed reversed
-   :empty-graph empty-graph
-   :prot-add-link add-link
-   :add-node add-node
-   :prot-add-graph add-graph
-   :prot-intersection-graph intersection-graph})
-
-(extend FuncGraph GraphProtocol (merge default-graph-protocol-mixin funcgraph-mixin))
+(extend-type FuncGraph
+  GraphProtocol
+  ;; specific
+  (nodes [g] (nodes g))
+  (links [g] (links g))
+  (adjency [g] (adjency g))
+  (map-node [g mg f] (map-node g mg f))
+  (filter-node [g pred] (filter-node g pred))
+  (filter-link [g pred] (filter-link g pred))
+  (reversed [g] (reversed g))
+  (empty-graph [g] (empty-graph g))
+  (add-node [g node] (add-node g node))
+  (add-link [g mg link] (add-link g mg link))
+  (add-graph [g mg g2] (add-graph g mg g2))
+  (intersection-graph [g mg g2] (intersection-graph g mg g2))
+  ;; generic
+  (ancestry [g] (prot/default-ancestry g))
+  (in-degrees [g] (prot/default-in-degrees g))
+  (out-degrees [g] (prot/default-out-degrees g))
+  (degrees [g] (prot/default-degrees g))
+  (map-link [g f] (prot/default-map-link g f)))

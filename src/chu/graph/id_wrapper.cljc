@@ -126,25 +126,30 @@
    :unwrap unwrap
    :inner :g})
 
-(extend IdWrapperGraph GraphWrapperProtocol wrapper-mixin)
+(extend-type IdWrapperGraph
+  GraphWrapperProtocol
+  (wrap [_ g] (wrap g))
+  (unwrap [wrapper] (unwrap wrapper))
+  (inner [wrapper] (:g wrapper)))
 
-(def id-wrapper-graph-mixin
-  {:nodes nodes
-   :links links
-   :adjency adjency
-   :ancestry ancestry
-   :reversed reversed
-   :map-link map-link
-   :map-node map-node
-   :filter-node filter-node
-   :filter-link filter-link
-   :in-degrees in-degrees
-   :out-degrees out-degrees
-   :degrees degrees
-   :empty-graph empty-graph
-   :add-node add-node
-   :add-link add-link})
-
-
-
-(extend IdWrapperGraph GraphProtocol (merge prot/default-graph-protocol-mixin id-wrapper-graph-mixin))
+(extend-type IdWrapperGraph
+  GraphProtocol
+  ;; specific
+  (nodes [g] (nodes g))
+  (links [g] (links g))
+  (adjency [g] (adjency g))
+  (ancestry [g] (ancestry g))
+  (reversed [g] (reversed g))
+  (empty-graph [g] (empty-graph g))
+  (map-link [g f] (map-link g f))
+  (map-node [g mg f] (map-node g mg f))
+  (filter-node [g pred] (filter-node g pred))
+  (filter-link [g pred] (filter-link g pred))
+  (in-degrees [g] (in-degrees g))
+  (out-degrees [g] (out-degrees g))
+  (degrees [g] (degrees g))
+  (add-node [g node] (add-node g node))
+  (add-link [g mg link] (add-link g mg link))
+  ;; generic
+  (add-graph [g mg g2] (prot/default-add-graph g mg g2))
+  (intersection-graph [g mg g2] (prot/default-intersection-graph g mg g2)))
