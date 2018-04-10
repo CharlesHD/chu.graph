@@ -10,7 +10,7 @@
                  [adzerk/boot-test "1.2.0" :scope "test"]
                  [adzerk/boot-cljs "2.1.3" :scope "test"]
                  [org.clojure/data.priority-map "0.0.7"]
-                 [tailrecursion/cljs-priority-map "1.2.0"]
+                 [tailrecursion/cljs-priority-map "1.2.1"]
                  [chulper "1.2.3"]
                  [org.clojure/core.async "0.3.443"]
                  [org.clojure/test.check "0.9.0"]])
