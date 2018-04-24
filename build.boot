@@ -12,7 +12,7 @@
                  [org.clojure/data.priority-map "0.0.7"]
                  [tailrecursion/cljs-priority-map "1.2.1"]
                  [chulper "1.2.3"]
-                 [org.clojure/core.async "0.3.443"]
+                 [org.clojure/core.async "0.4.474"]
                  [org.clojure/test.check "0.9.0"]])
 
 (require '[adzerk.bootlaces :refer :all])
